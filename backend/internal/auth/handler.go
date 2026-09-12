@@ -1,3 +1,4 @@
+// internal/auth/handler.go
 package auth
 
 import (
@@ -198,3 +199,4 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, user)
 }
+

@@ -14,6 +14,9 @@ import (
 	"paper-server/internal/auth"
 	"paper-server/internal/config"
 	"paper-server/internal/database"
+	"path/filepath"
+
+    "paper-server/internal/project"
 )
 
 func main() {
@@ -44,6 +47,28 @@ func main() {
 	mux := http.NewServeMux()
 
 	auth.RegisterRoutes(mux, authHandler)
+
+	projectRepository := project.NewRepository(db)
+	
+	projectStorage, err := project.NewStorage(
+    filepath.Join(cfg.DataDir, "projects"),
+	)
+	if err != nil {
+    log.Fatalf("project storage: %v", err)
+	}
+	
+	projectService := project.NewService(
+    projectRepository,
+    projectStorage,
+	)
+	
+	projectHandler := project.NewHandler(projectService)
+	
+	project.RegisterRoutes(
+    mux,
+    projectHandler,
+    authHandler,
+	)
 
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
