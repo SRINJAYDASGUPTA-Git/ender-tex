@@ -5,36 +5,39 @@
 export interface AuthenticationRequest {
     email: string;
     password: string;
-    name: string;
-    imageUrl: string;
-    message?: string;
 }
 
 export interface AuthenticationResponse {
-    access_token: string;
-    refresh_token: string;
+    user: UserResponse;
     message?: string;
 }
 
 
 // ================================
-// To do DTOs
+// Invitation DTOs
 // ================================
 
-export interface TodoRequest {
-    title: string;
-    body: string;
-    message?: string;
+export interface InvitationCreateRequest {
+    email: string;
+    role?: string;
 }
 
-export interface TodoResponse {
-    createdAt: string;
-    completedAt: string;
-    done: boolean;
-    title: string;
-    body: string;
-    ownerId: string;
+export interface InvitationCreateResponse {
     id: string;
+    email: string;
+    role: UserRole;
+    expiresAt: string;
+    token: string;
+    message?: string;
+}
+
+export interface InvitationAcceptRequest {
+    token: string;
+    password: string;
+}
+
+export interface InvitationAcceptResponse {
+    user: UserResponse;
     message?: string;
 }
 
@@ -43,20 +46,23 @@ export interface TodoResponse {
 // User DTOs
 // ================================
 
+export type UserRole = "ADMIN" | "COLLABORATOR";
+
 export interface UserResponse {
     id: string;
-    name: string;
     email: string;
-    imageUrl: string;
-    accountLocked: boolean;
-    enabled: boolean;
-    roles: string[];
-    todos: TodoResponse[];
+    role: UserRole;
+    createdAt: string;
+    updatedAt: string;
     message?: string;
 }
 
-export interface UserUpdateRequest {
-    name: string;
-    imageUrl: string;
+
+// ================================
+// Session / Current User DTOs
+// ================================
+
+export interface CurrentUserResponse {
+    user: UserResponse;
     message?: string;
 }

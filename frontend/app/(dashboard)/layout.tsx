@@ -1,8 +1,7 @@
-import {AppSidebar} from '@/components/app-sidebar';
-import {SidebarProvider, SidebarTrigger} from '@/components/ui/sidebar';
 import {TooltipProvider} from '@/components/ui/tooltip';
 
 import React from 'react'
+import {AppNavbar} from "@/components/app-navbar";
 
 export default function HomeLayout({
                                        children,
@@ -12,15 +11,10 @@ export default function HomeLayout({
 
     return (
         <TooltipProvider>
-            <SidebarProvider>
-                <AppSidebar />
+            <AppNavbar />
                 <main className="flex-1 p-4">
-                    <header className="flex h-14 items-center border-b px-4">
-                        <SidebarTrigger className={"md:hidden"} />
-                    </header>
                     {children}
                 </main>
-            </SidebarProvider>
         </TooltipProvider>
     )
 }

@@ -9,13 +9,13 @@ import {
     User,
 } from "lucide-react";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import {useEffect, useRef, useState} from "react";
+import {useRouter} from "next/navigation";
 
 import axios from "@/utils/axiosInstance";
-import { useUser } from "@/providers/UserContext";
+import {useUser} from "@/providers/UserContext";
 import {
-    UserUpdateRequest,
+
     UserResponse,
 } from "@/types";
 
@@ -24,8 +24,8 @@ import {
     AvatarFallback,
     AvatarImage,
 } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
 
 import {
     Card,
@@ -52,7 +52,7 @@ export default function SettingsPage() {
     const fileInputRef =
         useRef<HTMLInputElement>(null);
 
-    const [name, setName] = useState("");
+    // const [name, setName] = useState("");
     const [imageUrl, setImageUrl] = useState("");
 
     const [uploadingImage, setUploadingImage] =
@@ -73,12 +73,12 @@ export default function SettingsPage() {
         }
     }, [user, userLoading, router]);
 
-    useEffect(() => {
-        if (user) {
-            setName(user.name);
-            setImageUrl(user.imageUrl);
-        }
-    }, [user]);
+    // useEffect(() => {
+    //     if (user) {
+    //         setName(user.name);
+    //         setImageUrl(user.imageUrl);
+    //     }
+    // }, [user]);
 
     const getInitials = (name: string) => {
         return (
@@ -132,47 +132,47 @@ export default function SettingsPage() {
         }
     };
 
-    const handleSave = async (
-        event: React.FormEvent<HTMLFormElement>
-    ) => {
-        event.preventDefault();
-
-        setSaving(true);
-        setError("");
-        setSuccess("");
-
-        try {
-            const request: UserUpdateRequest = {
-                name: name.trim(),
-                imageUrl,
-            };
-
-            const response =
-                await axios.put<UserResponse>(
-                    "/users/me",
-                    request
-                );
-
-            setUser(response.data);
-
-            setSuccess(
-                "Your profile has been updated."
-            );
-        } catch (error: any) {
-            setError(
-                error.response?.data?.message ||
-                "Failed to update your profile."
-            );
-        } finally {
-            setSaving(false);
-        }
-    };
+    // const handleSave = async (
+    //     event: React.FormEvent<HTMLFormElement>
+    // ) => {
+    //     event.preventDefault();
+    //
+    //     setSaving(true);
+    //     setError("");
+    //     setSuccess("");
+    //
+    //     try {
+    //         const request: UserUpdateRequest = {
+    //             name: name.trim(),
+    //             imageUrl,
+    //         };
+    //
+    //         const response =
+    //             await axios.put<UserResponse>(
+    //                 "/users/me",
+    //                 request
+    //             );
+    //
+    //         setUser(response.data);
+    //
+    //         setSuccess(
+    //             "Your profile has been updated."
+    //         );
+    //     } catch (error: any) {
+    //         setError(
+    //             error.response?.data?.message ||
+    //             "Failed to update your profile."
+    //         );
+    //     } finally {
+    //         setSaving(false);
+    //     }
+    // };
 
     if (userLoading || !user) {
         return (
             <div className="flex min-h-[70vh] items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="size-7 animate-spin text-primary" />
+                    <Loader2 className="size-7 animate-spin text-primary"/>
 
                     <p className="text-sm text-muted-foreground">
                         Loading settings...
@@ -214,7 +214,7 @@ export default function SettingsPage() {
                 <CardContent>
                     <form
                         data-testid="settings-form"
-                        onSubmit={handleSave}
+                        // onSubmit={handleSave}
                         className="space-y-8"
                     >
                         {/* Avatar */}
@@ -226,11 +226,11 @@ export default function SettingsPage() {
                                 >
                                     <AvatarImage
                                         src={imageUrl}
-                                        alt={name}
+                                        alt={user.email}
                                     />
 
                                     <AvatarFallback className="rounded-2xl text-xl">
-                                        {getInitials(name)}
+                                        {getInitials(user.email)}
                                     </AvatarFallback>
                                 </Avatar>
 
@@ -247,9 +247,9 @@ export default function SettingsPage() {
                                     aria-label="Change profile picture"
                                 >
                                     {uploadingImage ? (
-                                        <Loader2 className="size-4 animate-spin" />
+                                        <Loader2 className="size-4 animate-spin"/>
                                     ) : (
-                                        <Camera className="size-4" />
+                                        <Camera className="size-4"/>
                                     )}
                                 </button>
 
@@ -296,28 +296,28 @@ export default function SettingsPage() {
                         </div>
 
                         {/* Name */}
-                        <Field>
-                            <FieldLabel htmlFor="name">
-                                Name
-                            </FieldLabel>
+                        {/*<Field>*/}
+                        {/*    <FieldLabel htmlFor="name">*/}
+                        {/*        Name*/}
+                        {/*    </FieldLabel>*/}
 
-                            <div className="relative">
-                                <User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        {/*    <div className="relative">*/}
+                        {/*        <User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />*/}
 
-                                <Input
-                                    id="name"
-                                    data-testid="settings-name"
-                                    value={name}
-                                    onChange={(event) =>
-                                        setName(
-                                            event.target.value
-                                        )
-                                    }
-                                    className="pl-9"
-                                    required
-                                />
-                            </div>
-                        </Field>
+                        {/*        <Input*/}
+                        {/*            id="name"*/}
+                        {/*            data-testid="settings-name"*/}
+                        {/*            value={name}*/}
+                        {/*            onChange={(event) =>*/}
+                        {/*                setName(*/}
+                        {/*                    event.target.value*/}
+                        {/*                )*/}
+                        {/*            }*/}
+                        {/*            className="pl-9"*/}
+                        {/*            required*/}
+                        {/*        />*/}
+                        {/*    </div>*/}
+                        {/*</Field>*/}
 
                         {/* Email */}
                         <Field>
@@ -326,7 +326,8 @@ export default function SettingsPage() {
                             </FieldLabel>
 
                             <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                                <Mail
+                                    className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/>
 
                                 <Input
                                     id="email"
@@ -359,39 +360,39 @@ export default function SettingsPage() {
                                 data-testid="settings-success"
                                 className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-600"
                             >
-                                <CheckCircle2 className="size-4" />
+                                <CheckCircle2 className="size-4"/>
 
                                 {success}
                             </div>
                         )}
 
-                        {/* Save */}
-                        <div className="flex justify-end border-t pt-6">
-                            <Button
-                                data-testid="settings-save"
-                                type="submit"
-                                disabled={
-                                    saving ||
-                                    uploadingImage ||
-                                    !name.trim()
-                                }
-                                className="gap-2"
-                            >
-                                {saving ? (
-                                    <>
-                                        <Loader2 className="size-4 animate-spin" />
+                        {/*/!* Save *!/*/}
+                        {/*<div className="flex justify-end border-t pt-6">*/}
+                        {/*    <Button*/}
+                        {/*        data-testid="settings-save"*/}
+                        {/*        type="submit"*/}
+                        {/*        disabled={*/}
+                        {/*            saving ||*/}
+                        {/*            uploadingImage ||*/}
+                        {/*            !user.email.trim()*/}
+                        {/*        }*/}
+                        {/*        className="gap-2"*/}
+                        {/*    >*/}
+                        {/*        {saving ? (*/}
+                        {/*            <>*/}
+                        {/*                <Loader2 className="size-4 animate-spin"/>*/}
 
-                                        Saving...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Save className="size-4" />
+                        {/*                Saving...*/}
+                        {/*            </>*/}
+                        {/*        ) : (*/}
+                        {/*            <>*/}
+                        {/*                <Save className="size-4"/>*/}
 
-                                        Save Changes
-                                    </>
-                                )}
-                            </Button>
-                        </div>
+                        {/*                Save Changes*/}
+                        {/*            </>*/}
+                        {/*        )}*/}
+                        {/*    </Button>*/}
+                        {/*</div>*/}
                     </form>
                 </CardContent>
             </Card>
@@ -411,58 +412,58 @@ export default function SettingsPage() {
 
                 <CardContent className="space-y-4">
                     {/* Account status */}
-                    <div className="flex items-center justify-between rounded-lg border p-4">
-                        <div>
-                            <p className="text-sm font-medium">
-                                Account status
-                            </p>
+                    {/*<div className="flex items-center justify-between rounded-lg border p-4">*/}
+                    {/*    <div>*/}
+                    {/*        <p className="text-sm font-medium">*/}
+                    {/*            Account status*/}
+                    {/*        </p>*/}
 
-                            <p className="text-xs text-muted-foreground">
-                                Whether your account is
-                                currently active.
-                            </p>
-                        </div>
+                    {/*        <p className="text-xs text-muted-foreground">*/}
+                    {/*            Whether your account is*/}
+                    {/*            currently active.*/}
+                    {/*        </p>*/}
+                    {/*    </div>*/}
 
-                        <span
-                            data-testid="settings-account-status"
-                            className={
-                                user.enabled
-                                    ? "rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600"
-                                    : "rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"
-                            }
-                        >
-                            {user.enabled
-                                ? "Enabled"
-                                : "Disabled"}
-                        </span>
-                    </div>
+                    {/*    <span*/}
+                    {/*        data-testid="settings-account-status"*/}
+                    {/*        className={*/}
+                    {/*            user.enabled*/}
+                    {/*                ? "rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600"*/}
+                    {/*                : "rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"*/}
+                    {/*        }*/}
+                    {/*    >*/}
+                    {/*        {user.enabled*/}
+                    {/*            ? "Enabled"*/}
+                    {/*            : "Disabled"}*/}
+                    {/*    </span>*/}
+                    {/*</div>*/}
 
                     {/* Account locked */}
-                    <div className="flex items-center justify-between rounded-lg border p-4">
-                        <div>
-                            <p className="text-sm font-medium">
-                                Account locked
-                            </p>
+                    {/*<div className="flex items-center justify-between rounded-lg border p-4">*/}
+                    {/*    <div>*/}
+                    {/*        <p className="text-sm font-medium">*/}
+                    {/*            Account locked*/}
+                    {/*        </p>*/}
 
-                            <p className="text-xs text-muted-foreground">
-                                Current account security
-                                status.
-                            </p>
-                        </div>
+                    {/*        <p className="text-xs text-muted-foreground">*/}
+                    {/*            Current account security*/}
+                    {/*            status.*/}
+                    {/*        </p>*/}
+                    {/*    </div>*/}
 
-                        <span
-                            data-testid="settings-account-locked"
-                            className={
-                                user.accountLocked
-                                    ? "rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"
-                                    : "rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600"
-                            }
-                        >
-                            {user.accountLocked
-                                ? "Locked"
-                                : "Not locked"}
-                        </span>
-                    </div>
+                    {/*    <span*/}
+                    {/*        data-testid="settings-account-locked"*/}
+                    {/*        className={*/}
+                    {/*            user.accountLocked*/}
+                    {/*                ? "rounded-full bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive"*/}
+                    {/*                : "rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600"*/}
+                    {/*        }*/}
+                    {/*    >*/}
+                    {/*        {user.accountLocked*/}
+                    {/*            ? "Locked"*/}
+                    {/*            : "Not locked"}*/}
+                    {/*    </span>*/}
+                    {/*</div>*/}
 
                     {/* Roles */}
                     <div className="rounded-lg border p-4">
@@ -474,16 +475,11 @@ export default function SettingsPage() {
                             data-testid="settings-roles"
                             className="mt-2 flex flex-wrap gap-2"
                         >
-                            {user.roles.map(
-                                (role) => (
-                                    <span
-                                        key={role}
-                                        className="rounded-full bg-muted px-3 py-1 text-xs font-medium"
-                                    >
-                                        {role}
-                                    </span>
-                                )
-                            )}
+                            <span
+                                className="rounded-full bg-muted px-3 py-1 text-xs font-medium"
+                            >
+                                {user.role}
+                            </span>
                         </div>
                     </div>
                 </CardContent>
