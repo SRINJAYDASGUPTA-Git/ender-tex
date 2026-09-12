@@ -1,0 +1,104 @@
+package main
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+
+	"golang.org/x/term"
+
+	"paper-server/internal/auth"
+	"paper-server/internal/config"
+	"paper-server/internal/database"
+)
+
+func main() {
+	cfg := config.Load()
+
+	db, err := database.Open()
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("migration: %v", err)
+	}
+
+	authRepository := auth.NewRepository(db)
+	authService := auth.NewService(authRepository)
+
+	if len(os.Args) > 1 && os.Args[1] == "--create-admin" {
+		if err := createAdmin(authService); err != nil {
+			log.Fatalf("create admin: %v", err)
+		}
+		return
+	}
+
+	authHandler := auth.NewHandler(authService)
+
+	mux := http.NewServeMux()
+
+	auth.RegisterRoutes(mux, authHandler)
+
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ok"}`)
+	})
+
+	addr := cfg.Host + ":" + cfg.Port
+
+	log.Printf("Paper Server backend listening on %s", addr)
+
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatalf("server: %v", err)
+	}
+}
+
+func createAdmin(service *auth.Service) error {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Print("Admin email: ")
+	email, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+
+	email = strings.TrimSpace(email)
+
+	fmt.Print("Password: ")
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Print("Confirm password: ")
+	confirmBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println()
+
+	if err != nil {
+		return err
+	}
+
+	password := string(passwordBytes)
+	confirm := string(confirmBytes)
+
+	if password != confirm {
+		return errors.New("passwords do not match")
+	}
+
+	user, err := service.CreateAdmin(email, password)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Admin account created successfully: %s (%s)\n", user.Email, user.ID)
+
+	return nil
+}
