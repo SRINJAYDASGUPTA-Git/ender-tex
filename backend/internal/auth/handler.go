@@ -14,6 +14,10 @@ type Handler struct {
 	service *Service
 }
 
+type createInvitationRequest struct {
+	Email string `json:"email"`
+}
+
 func NewHandler(service *Service) *Handler {
 	return &Handler{
 		service: service,
@@ -22,6 +26,11 @@ func NewHandler(service *Service) *Handler {
 
 type loginRequest struct {
 	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type acceptInvitationRequest struct {
+	Token    string `json:"token"`
 	Password string `json:"password"`
 }
 
@@ -123,4 +132,69 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func (h *Handler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req createInvitationRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	invitation, token, err := h.service.CreateInvitation(
+		req.Email,
+		RoleCollaborator,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// For now we return the invitation token directly.
+	// Later this will be sent through the chosen invitation mechanism.
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":         invitation.ID,
+		"email":      invitation.Email,
+		"role":       invitation.Role,
+		"expires_at": invitation.ExpiresAt,
+		"token":      token,
+	})
+}
+
+func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req acceptInvitationRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.service.AcceptInvitation(
+		req.Token,
+		req.Password,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvitationNotFound):
+			http.Error(w, "invalid invitation", http.StatusBadRequest)
+
+		default:
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, user)
 }

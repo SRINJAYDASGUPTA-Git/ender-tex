@@ -21,6 +21,8 @@ const (
 	argonSaltLen = 16
 
 	sessionDuration = 7 * 24 * time.Hour
+
+	invitationDuration = 48 * time.Hour
 )
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
@@ -266,4 +268,80 @@ func (s *Service) DeleteSession(token string) error {
 }
 func (s *Service) CreateAdmin(email, password string) (*User, error) {
 	return s.CreateUser(email, password, RoleAdmin)
+}
+
+func (s *Service) CreateInvitation(email string, role Role) (*Invitation, string, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	if email == "" {
+		return nil, "", errors.New("email is required")
+	}
+
+	if role != RoleCollaborator {
+		return nil, "", errors.New("invalid invitation role")
+	}
+
+	// Don't allow invitations for existing accounts.
+	_, err := s.repository.GetUserByEmail(email)
+	if err == nil {
+		return nil, "", errors.New("user already exists")
+	}
+
+	if !errors.Is(err, ErrUserNotFound) {
+		return nil, "", err
+	}
+
+	token, err := generateToken()
+	if err != nil {
+		return nil, "", fmt.Errorf("generate invitation token: %w", err)
+	}
+
+	invitation := &Invitation{
+		ID:        uuid.NewString(),
+		Email:     email,
+		Role:      role,
+		ExpiresAt: time.Now().Add(invitationDuration),
+	}
+
+	if err := s.repository.CreateInvitation(
+		invitation,
+		hashToken(token),
+	); err != nil {
+		return nil, "", err
+	}
+
+	return invitation, token, nil
+}
+
+func (s *Service) AcceptInvitation(
+	token string,
+	password string,
+) (*User, error) {
+	if token == "" {
+		return nil, ErrInvitationNotFound
+	}
+
+	if len(password) < 8 {
+		return nil, errors.New("password must be at least 8 characters")
+	}
+
+	invitation, err := s.repository.GetInvitationByTokenHash(hashToken(token))
+	if err != nil {
+		return nil, err
+	}
+
+	if time.Now().After(invitation.ExpiresAt) {
+		_ = s.repository.DeleteInvitation(invitation.ID)
+		return nil, errors.New("invitation has expired")
+	}
+
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+
+	return s.repository.AcceptInvitation(
+		invitation,
+		passwordHash,
+	)
 }

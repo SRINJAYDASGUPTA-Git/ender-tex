@@ -25,3 +25,11 @@ type Session struct {
 	ExpiresAt time.Time
 	CreatedAt time.Time
 }
+
+type Invitation struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Role      Role      `json:"role"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
