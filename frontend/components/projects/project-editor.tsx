@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {pdfjs} from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -38,26 +38,7 @@ export function ProjectEditor() {
     const [pdfVersion, setPdfVersion] = useState(0);
     const [compiling, setCompiling] = useState(false);
 
-    useEffect(() => {
-        const loadProject = async () => {
-            try {
-                const response = await axios.get<Project>(
-                    `/projects/${params.id}`
-                );
-
-                setProject(response.data);
-            } catch (error) {
-                console.error(error);
-                toast.error("Failed to load project.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        loadProject();
-    }, [params.id]);
-
-    const openFile = async (path: string) => {
+    const openFile = useCallback(async (path: string) => {
         try {
             setSelectedPath(path);
             setFileLoading(true);
@@ -82,7 +63,31 @@ export function ProjectEditor() {
         } finally {
             setFileLoading(false);
         }
-    };
+    }, [params.id]);
+
+    useEffect(() => {
+        const loadProject = async () => {
+            try {
+                const response = await axios.get<Project>(
+                    `/projects/${params.id}`
+                );
+
+                const projectData = response.data;
+
+                setProject(projectData);
+
+                // Open main file automatically
+                await openFile(projectData.mainFile);
+            } catch (error) {
+                console.error(error);
+                toast.error("Failed to load project.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadProject();
+    }, [params.id, openFile]);
 
     const saveFile = async () => {
         if (!file.path || !fileDirty || saving) {

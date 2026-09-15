@@ -14,6 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import axios from "@/utils/axiosInstance";
 
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -34,17 +35,59 @@ export function PdfPreview({
                            }: PdfPreviewProps) {
     const [numPages, setNumPages] = useState(0);
     const [scale, setScale] = useState(1);
+
     const [searchOpen, setSearchOpen] = useState(false);
     const [search, setSearch] = useState("");
     const [currentMatch, setCurrentMatch] = useState(0);
 
+    const [pdfAvailable, setPdfAvailable] = useState(false);
+    const [checkingPdf, setCheckingPdf] = useState(true);
+
     const pdfUrl = useMemo(() => {
-        return `/api/projects/${projectId}/pdf?v=${version}`;
+        return `/projects/${projectId}/pdf?v=${version}`;
     }, [projectId, version]);
 
     useEffect(() => {
         setCurrentMatch(0);
     }, [search]);
+
+    /*
+     * Check whether a compiled PDF exists before
+     * giving react-pdf the URL.
+     */
+    useEffect(() => {
+        let cancelled = false;
+
+        const checkPdf = async () => {
+            setCheckingPdf(true);
+            setPdfAvailable(false);
+            setNumPages(0);
+
+            try {
+                await axios.get(pdfUrl, {
+                    responseType: "blob",
+                });
+
+                if (!cancelled) {
+                    setPdfAvailable(true);
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setPdfAvailable(false);
+                }
+            } finally {
+                if (!cancelled) {
+                    setCheckingPdf(false);
+                }
+            }
+        };
+
+        checkPdf();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [pdfUrl]);
 
     const zoomIn = () => {
         setScale((value) => Math.min(2.5, value + 0.1));
@@ -197,48 +240,65 @@ export function PdfPreview({
 
             {/* PDF */}
             <div className="min-h-0 flex-1 overflow-auto bg-muted/40 p-6">
-                <Document
-                    key={pdfUrl}
-                    file={pdfUrl}
-                    onLoadSuccess={({ numPages }) => {
-                        setNumPages(numPages);
-                    }}
-                    onLoadError={(error) => {
-                        console.error(
-                            "Failed to load PDF:",
-                            error
-                        );
-                        setNumPages(0);
-                    }}
-                    loading={
-                        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                            Loading PDF...
-                        </div>
-                    }
-                    error={
-                        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                            No compiled PDF available.
-                        </div>
-                    }
-                    className="flex flex-col items-center gap-6"
-                >
-                    {Array.from(
-                        { length: numPages },
-                        (_, index) => (
-                            <div
-                                key={`page-${index + 1}`}
-                                className="bg-white shadow-md"
-                            >
-                                <Page
-                                    pageNumber={index + 1}
-                                    scale={scale}
-                                    renderTextLayer
-                                    renderAnnotationLayer
-                                />
+                {checkingPdf ? (
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                        Checking PDF...
+                    </div>
+                ) : !pdfAvailable ? (
+                    <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                        <p className="text-sm font-medium">
+                            No compiled PDF
+                        </p>
+
+                        <p className="text-xs text-muted-foreground">
+                            Compile the project to preview the PDF here.
+                        </p>
+                    </div>
+                ) : (
+                    <Document
+                        key={`/api/${pdfUrl}`}
+                        file={`/api/${pdfUrl}`}
+                        onLoadSuccess={({ numPages }) => {
+                            setNumPages(numPages);
+                        }}
+                        onLoadError={(error) => {
+                            console.error(
+                                "Failed to load PDF:",
+                                error
+                            );
+                            setPdfAvailable(false);
+                            setNumPages(0);
+                        }}
+                        loading={
+                            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                                Loading PDF...
                             </div>
-                        )
-                    )}
-                </Document>
+                        }
+                        error={
+                            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                                Failed to load PDF.
+                            </div>
+                        }
+                        className="flex flex-col items-center gap-6"
+                    >
+                        {Array.from(
+                            { length: numPages },
+                            (_, index) => (
+                                <div
+                                    key={`page-${index + 1}`}
+                                    className="bg-white shadow-md"
+                                >
+                                    <Page
+                                        pageNumber={index + 1}
+                                        scale={scale}
+                                        renderTextLayer
+                                        renderAnnotationLayer
+                                    />
+                                </div>
+                            )
+                        )}
+                    </Document>
+                )}
             </div>
         </div>
     );
