@@ -15,6 +15,14 @@ const (
 	PermissionEditor = "EDITOR"
 )
 
+type ProjectMembership struct {
+	ID          string `json:"id"`
+	ProjectID   string `json:"projectId"`
+	UserID      string `json:"userId"`
+	Permission  string `json:"permission"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
 type Project struct {
 	ID           string    `json:"id"`
 	OwnerID      string    `json:"ownerId"`
@@ -24,6 +32,7 @@ type Project struct {
 	Bibliography string    `json:"bibliography"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
+	Memberships  []ProjectMembership `json:"memberships"`
 }
 
 type CreateProjectRequest struct {

@@ -62,7 +62,7 @@ func main() {
     projectStorage,
 	)
 	
-	projectHandler := project.NewHandler(projectService)
+	projectHandler := project.NewHandler(projectService, projectStorage)
 	
 	project.RegisterRoutes(
     mux,

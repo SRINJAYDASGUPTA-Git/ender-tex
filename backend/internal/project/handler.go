@@ -80,6 +80,13 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	id := strings.TrimPrefix(r.URL.Path, "/api/projects/")
 
+	if _, err := h.service.GetForUser(id, userID); err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"message": "Forbidden.",
+			})
+			return
+		}
+
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"message": "Project ID is required.",
@@ -116,6 +123,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
+	
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -124,6 +132,20 @@ func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := projectIDFromPath(r.URL.Path)
 	if !ok {
 		http.Error(w, "invalid project path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	
+	if _, err := h.service.GetForUser(projectID, userID); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"message": "Forbidden.",
+		})
 		return
 	}
 
@@ -144,11 +166,26 @@ func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) File(w http.ResponseWriter, r *http.Request) {
-	projectID, filePath, ok := projectFileFromPath(r.URL.Path)
-	if !ok {
+	projectID, filePath, projectOk := projectFileFromPath(r.URL.Path)
+	if !projectOk {
 		http.Error(w, "invalid file path", http.StatusBadRequest)
 		return
 	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForUser(projectID, userID); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"message": "Forbidden.",
+		})
+		return
+	}
+	
 
 	switch r.Method {
 	case http.MethodGet:

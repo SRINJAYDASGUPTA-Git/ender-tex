@@ -3,6 +3,7 @@ package project
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -82,15 +83,42 @@ func (s *Service) Create(
 		return nil, fmt.Errorf("initialize project files: %w", err)
 	}
 
+	if err := s.repository.Create(project); err != nil {
+		_ = s.storage.DeleteProject(project.ID)
+	
+		return nil, fmt.Errorf("create project: %w", err)
+	}
+
 	return project, nil
 }
 
-func (s *Service) List(ownerID string) ([]*Project, error) {
-	return s.repository.ListByOwner(ownerID)
+func (s *Service) List(userID string) ([]*Project, error) {
+	return s.repository.ListByOwnerOrMember(userID)
 }
 
 func (s *Service) Get(id string) (*Project, error) {
 	return s.repository.GetByID(id)
+}
+
+func (s *Service) GetForUser(
+	projectID string,
+	userID string,
+) (*Project, error) {
+	project, err := s.repository.GetByID(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	collaborators := make([]string, 0, len(project.Memberships))
+	for _, membership := range project.Memberships {
+		collaborators = append(collaborators, membership.UserID)
+	}
+	
+	if project.OwnerID != userID && !slices.Contains(collaborators, userID) {
+		return nil, fmt.Errorf("project not owned by user")
+	}
+
+	return project, nil
 }
 
 func validEngine(engine string) bool {

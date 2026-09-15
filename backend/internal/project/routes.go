@@ -34,26 +34,22 @@ func RegisterRoutes(
 		"/api/projects/",
 		authHandler.RequireAuth(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet {
-					w.WriteHeader(http.StatusMethodNotAllowed)
-					return
-				}
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/files"):
+					handler.Files(w, r)
 
-				handler.Get(w, r)
+				case strings.Contains(r.URL.Path, "/files/"):
+					handler.File(w, r)
+
+				default:
+					if r.Method != http.MethodGet {
+						w.WriteHeader(http.StatusMethodNotAllowed)
+						return
+					}
+
+					handler.Get(w, r)
+				}
 			}),
 		),
 	)
-
-	mux.HandleFunc("/api/projects/", func(w http.ResponseWriter, r *http.Request) {
-			switch {
-			case strings.HasSuffix(r.URL.Path, "/files"):
-				handler.Files(w, r)
-	
-			case strings.Contains(r.URL.Path, "/files/"):
-				handler.File(w, r)
-	
-			default:
-				http.NotFound(w, r)
-			}
-		})
 }

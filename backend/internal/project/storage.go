@@ -41,6 +41,10 @@ func (s *Storage) CreateProject(projectID, mainFile string) error {
 	if err := os.MkdirAll(projectPath, 0755); err != nil {
 		return fmt.Errorf("create project directory: %w", err)
 	}
+	filePath, err := s.safeFilePath(projectID, mainFile)
+		if err != nil {
+			return err
+		}
 
 	content := `\documentclass{article}
 
@@ -53,11 +57,7 @@ Start writing your paper here.
 \end{document}
 `
 
-	if err := os.WriteFile(
-		filepath.Join(projectPath, mainFile),
-		[]byte(content),
-		0644,
-	); err != nil {
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("create main file: %w", err)
 	}
 
@@ -173,4 +173,8 @@ func (s *Storage) safeFilePath(projectID, filePath string) (string, error) {
 	}
 
 	return fullPath, nil
+}
+
+func (s *Storage) DeleteProject(projectID string) error {
+	return os.RemoveAll(s.ProjectPath(projectID))
 }

@@ -43,7 +43,7 @@ func (r *Repository) Create(project *Project) error {
 	return nil
 }
 
-func (r *Repository) ListByOwner(ownerID string) ([]*Project, error) {
+func (r *Repository) ListByOwnerOrMember(userId string) ([]*Project, error) {
 	rows, err := r.db.Query(`
 		SELECT
 			id,
@@ -54,10 +54,12 @@ func (r *Repository) ListByOwner(ownerID string) ([]*Project, error) {
 			bibliography,
 			created_at,
 			updated_at
-		FROM projects
-		WHERE owner_id = ?
+		FROM projects p
+		LEFT JOIN project_memberships pm ON p.id = pm.project_id
+		WHERE p.owner_id = ?
+		OR pm.member_id = ?
 		ORDER BY updated_at DESC
-	`, ownerID)
+	`, userId, userId)
 
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
