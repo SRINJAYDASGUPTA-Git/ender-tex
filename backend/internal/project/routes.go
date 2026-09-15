@@ -37,6 +37,8 @@ func RegisterRoutes(
 				switch {
 				case strings.HasSuffix(r.URL.Path, "/compile"):
 					handler.Compile(w, r)
+				case strings.HasSuffix(r.URL.Path, "/pdf"):
+					handler.PDF(w, r)
 				case strings.HasSuffix(r.URL.Path, "/files"):
 					handler.Files(w, r)
 

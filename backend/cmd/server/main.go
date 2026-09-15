@@ -64,9 +64,11 @@ func main() {
 		projectStorage,
 	)
 
-	latexCompiler := compiler.New(compiler.Config{
-		Image: cfg.LatexImage,
-	})
+	latexCompiler := compiler.New(
+    compiler.Config{
+        Image: "texlive/texlive:latest",
+    },
+	)
 
 	compilerService := compiler.NewService(
 		latexCompiler,

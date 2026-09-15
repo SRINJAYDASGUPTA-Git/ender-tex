@@ -302,6 +302,75 @@ func (h *Handler) Compile(
 	)
 }
 
+func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(
+			w,
+			"invalid project path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(
+			w,
+			"Unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	if _, err := h.service.GetForUser(
+		projectID,
+		userID,
+	); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	pdfPath := filepath.Join(
+		h.storage.ProjectPath(projectID),
+		"current.pdf",
+	)
+
+	if _, err := os.Stat(pdfPath); err != nil {
+		if os.IsNotExist(err) {
+			http.Error(
+				w,
+				"PDF not found. Compile the project first.",
+				http.StatusNotFound,
+			)
+			return
+		}
+
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set(
+		"Content-Disposition",
+		`inline; filename="current.pdf"`,
+	)
+
+	http.ServeFile(w, r, pdfPath)
+}
 // ==============================
 // CRUD Files
 // ==============================

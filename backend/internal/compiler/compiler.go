@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type Config struct {
@@ -34,9 +35,19 @@ func (c *Compiler) Compile(
 		return nil, fmt.Errorf("main file is not configured")
 	}
 
-	if _, err := os.Stat(mainFile); err != nil {
+	mainFilePath := filepath.Join(
+		buildDir,
+		filepath.FromSlash(mainFile),
+	)
+
+	if _, err := os.Stat(mainFilePath); err != nil {
 		return nil, fmt.Errorf("main file not found: %w", err)
 	}
 
-	return c.compileDocker(ctx, buildDir, engine, mainFile)
+	return c.compileDocker(
+		ctx,
+		buildDir,
+		engine,
+		mainFile,
+	)
 }
