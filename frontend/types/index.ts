@@ -87,3 +87,19 @@ export interface Project {
     createdAt: string;
     updatedAt: string;
 }
+
+export type ProjectFileType = "file" | "directory";
+
+export interface ProjectFile {
+    path: string;
+    name: string;
+    type: ProjectFileType;
+}
+export type ProjectFileResponse = {
+    files: ProjectFile[];
+}
+
+export type FileResponse = {
+    path: string;
+    content: string;
+}

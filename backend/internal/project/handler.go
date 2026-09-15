@@ -3,6 +3,7 @@ package project
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -134,6 +135,8 @@ func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) File(w http.ResponseWriter, r *http.Request) {
 	projectID, filePath, ok := projectFileFromPath(r.URL.Path)
+	filePath = filePath[6:]
+	fmt.Println("projectID/filePath", projectID, filePath)
 	if !ok {
 		http.Error(w, "invalid file path", http.StatusBadRequest)
 		return
@@ -284,6 +287,7 @@ func (h *Handler) renameFile(
 
 func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 	projectID, dirPath, ok := projectDirectoryFromPath(r.URL.Path)
+	fmt.Println("projectID/dirPath", projectID, dirPath)
 	if !ok {
 		http.Error(w, "invalid directory path", http.StatusBadRequest)
 		return
@@ -299,6 +303,8 @@ func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 		handleProjectAccessError(w, err)
 		return
 	}
+
+	dirPath = dirPath[8:]
 
 	if err := h.storage.CreateDirectory(projectID, dirPath); err != nil {
 		switch {
@@ -337,6 +343,8 @@ func (h *Handler) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
 		handleProjectAccessError(w, err)
 		return
 	}
+
+	dirPath = dirPath[8:]
 
 	if err := h.storage.DeleteDirectory(projectID, dirPath); err != nil {
 		switch {

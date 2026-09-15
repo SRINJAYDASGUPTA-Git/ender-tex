@@ -1,0 +1,185 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { toast } from "sonner";
+
+import axios from "@/utils/axiosInstance";
+import {FileResponse, Project} from "@/types";
+
+import { ProjectSidebar } from "./project-sidebar";
+import { ProjectToolbar } from "./project-toolbar";
+import {LatexEditor} from "@/components/projects/latex-editor";
+
+export function ProjectEditor() {
+    const params = useParams<{ id: string }>();
+
+    const [project, setProject] = useState<Project | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const [file, setFile] = useState<FileResponse>({
+        path: "",
+        content: "",
+    });
+    const [fileLoading, setFileLoading] = useState(false);
+
+    const [fileDirty, setFileDirty] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        const loadProject = async () => {
+            try {
+                const response = await axios.get<Project>(
+                    `/projects/${params.id}`
+                );
+
+                setProject(response.data);
+            } catch (error) {
+                console.error(error);
+                toast.error("Failed to load project.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadProject();
+    }, [params.id]);
+
+    const openFile = async (path: string) => {
+        try {
+            setSelectedPath(path);
+            setFileLoading(true);
+            setFileDirty(false);
+
+            const response = await axios.get<FileResponse>(
+                `/projects/${params.id}/files/${path}`
+            );
+
+            setFile(response.data);
+        } catch (error) {
+            console.error(error);
+
+            toast.error("Failed to open file.");
+
+            setFile({
+                path: "",
+                content: "",
+            });
+
+            setFileDirty(false);
+        } finally {
+            setFileLoading(false);
+        }
+    };
+
+    const saveFile = async () => {
+        if (!file.path || !fileDirty || saving) {
+            return;
+        }
+
+        try {
+            setSaving(true);
+
+            await axios.put(
+                `/projects/${params.id}/files/${file.path}`,
+                {
+                    content: file.content,
+                }
+            );
+
+            setFileDirty(false);
+
+            toast.success("File saved.");
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to save file.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const compileProject = () => {
+        toast.info("Compilation coming next.");
+    };
+
+    if (loading) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-muted-foreground">
+                    Loading project...
+                </p>
+            </div>
+        );
+    }
+
+    if (!project) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                <p className="text-sm text-muted-foreground">
+                    Project not found.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-lg border">
+            <ProjectToolbar project={project} />
+
+            <div className="flex min-h-0 flex-1">
+                <ProjectSidebar
+                    project={project}
+                    selectedPath={selectedPath}
+                    onFileSelect={openFile}
+                />
+
+                <main className="min-w-0 flex-1 overflow-hidden">
+                    {selectedPath ? (
+                        <div className="flex h-full flex-col">
+                            <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
+                                {selectedPath}
+                            </div>
+
+                            <div className="min-h-0 flex-1 overflow-auto p-4">
+                                {fileLoading ? (
+                                    <div className="text-sm text-muted-foreground">
+                                        Loading file...
+                                    </div>
+                                ) : (
+                                    <LatexEditor
+                                        value={file.content}
+                                        fileName={file.path}
+                                        onCompile={compileProject}
+                                        onSave={saveFile}
+                                        dirty={fileDirty}
+                                        saving={saving}
+                                        onChange={(value: string) => {
+                                            setFile((currentFile) => ({
+                                                ...currentFile,
+                                                content: value,
+                                            }));
+
+                                            setFileDirty(true);
+                                        }}
+                                    />
+                                )}
+
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                            Select a file to begin editing.
+                        </div>
+                    )}
+                </main>
+
+                <aside className="hidden w-[40%] border-l xl:block">
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                        PDF preview coming next...
+                    </div>
+                </aside>
+            </div>
+        </div>
+    );
+}
