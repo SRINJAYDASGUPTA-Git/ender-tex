@@ -3,9 +3,10 @@ package config
 import "os"
 
 type Config struct {
-	Host    string
-	Port    string
-	DataDir string
+	Host       string
+	Port       string
+	DataDir    string
+	LatexImage string
 }
 
 func Load() Config {
@@ -24,9 +25,16 @@ func Load() Config {
 		dataDir = "./data"
 	}
 
+	latexImage := os.Getenv("LATEX_IMAGE")
+
+	if latexImage == "" {
+		latexImage = "texlive/texlive"
+	}
+
 	return Config{
-		Host:    host,
-		Port:    port,
-		DataDir: dataDir,
+		Host:       host,
+		Port:       port,
+		DataDir:    dataDir,
+		LatexImage: latexImage,
 	}
 }

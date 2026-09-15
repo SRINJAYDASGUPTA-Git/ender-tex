@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 
 	"paper-server/internal/project"
+
+	"paper-server/internal/compiler"
 )
 
 func main() {
@@ -62,7 +64,15 @@ func main() {
 		projectStorage,
 	)
 
-	projectHandler := project.NewHandler(projectService, projectStorage)
+	latexCompiler := compiler.New(compiler.Config{
+		Image: cfg.LatexImage,
+	})
+
+	compilerService := compiler.NewService(
+		latexCompiler,
+	)
+
+	projectHandler := project.NewHandler(projectService, projectStorage, compilerService)
 
 	project.RegisterRoutes(
 		mux,

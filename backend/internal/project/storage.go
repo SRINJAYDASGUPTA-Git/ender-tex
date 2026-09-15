@@ -3,6 +3,7 @@ package project
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,101 @@ func NewStorage(root string) (*Storage, error) {
 
 func (s *Storage) ProjectPath(projectID string) string {
 	return filepath.Join(s.root, projectID)
+}
+
+func (s *Storage) FilePath(
+	projectID string,
+	filePath string,
+) (string, error) {
+	return s.safeFilePath(projectID, filePath)
+}
+
+func (s *Storage) CopyProjectTo(
+	projectID string,
+	destination string,
+) error {
+	entries, err := s.ListFiles(projectID)
+	if err != nil {
+		return fmt.Errorf("list project files: %w", err)
+	}
+
+	for _, entry := range entries {
+		// Generated PDF is not source.
+		if entry.Path == "current.pdf" {
+			continue
+		}
+
+		sourcePath, err := s.safeFilePath(
+			projectID,
+			entry.Path,
+		)
+		if err != nil {
+			return err
+		}
+
+		destinationPath := filepath.Join(
+			destination,
+			filepath.FromSlash(entry.Path),
+		)
+
+		if entry.Type == "directory" {
+			if err := os.MkdirAll(
+				destinationPath,
+				0755,
+			); err != nil {
+				return fmt.Errorf(
+					"create directory: %w",
+					err,
+				)
+			}
+
+			continue
+		}
+
+		if err := os.MkdirAll(
+			filepath.Dir(destinationPath),
+			0755,
+		); err != nil {
+			return fmt.Errorf(
+				"create parent directory: %w",
+				err,
+			)
+		}
+
+		src, err := os.Open(sourcePath)
+		if err != nil {
+			return fmt.Errorf(
+				"open %s: %w",
+				entry.Path,
+				err,
+			)
+		}
+
+		dst, err := os.Create(destinationPath)
+		if err != nil {
+			src.Close()
+			return fmt.Errorf(
+				"create %s: %w",
+				entry.Path,
+				err,
+			)
+		}
+
+		_, copyErr := io.Copy(dst, src)
+
+		src.Close()
+		dst.Close()
+
+		if copyErr != nil {
+			return fmt.Errorf(
+				"copy %s: %w",
+				entry.Path,
+				copyErr,
+			)
+		}
+	}
+
+	return nil
 }
 
 func (s *Storage) CreateProject(projectID, mainFile string) error {
@@ -391,4 +487,24 @@ func (s *Storage) RenameDirectory(
 	}
 
 	return nil
+}
+
+func copyFile(
+	source string,
+	destination string,
+) error {
+	src, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := os.Create(destination)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	_, err = io.Copy(dst, src)
+	return err
 }

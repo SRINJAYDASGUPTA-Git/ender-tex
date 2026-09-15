@@ -5,20 +5,29 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"paper-server/internal/auth"
+	"paper-server/internal/compiler"
 )
 
 type Handler struct {
-	service *Service
-	storage *Storage
+	service  *Service
+	storage  *Storage
+	compiler *compiler.Service
 }
 
-func NewHandler(service *Service, storage *Storage) *Handler {
+func NewHandler(
+	service *Service,
+	storage *Storage,
+	compilerService *compiler.Service,
+) *Handler {
 	return &Handler{
-		service: service,
-		storage: storage,
+		service:  service,
+		storage:  storage,
+		compiler: compilerService,
 	}
 }
 
@@ -172,6 +181,125 @@ func (h *Handler) File(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (h *Handler) Compile(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(
+			w,
+			"invalid project path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(
+			w,
+			"Unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	p, err := h.service.GetForUser(
+		projectID,
+		userID,
+	)
+	if err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	buildDir, err := os.MkdirTemp(
+		"",
+		"endertex-build-*",
+	)
+	if err != nil {
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{
+				"message": "Failed to create build workspace.",
+			},
+		)
+		return
+	}
+	defer os.RemoveAll(buildDir)
+
+	if err := h.storage.CopyProjectTo(
+		projectID,
+		buildDir,
+	); err != nil {
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{
+				"message": err.Error(),
+			},
+		)
+		return
+	}
+
+	result, err := h.compiler.Compile(
+		r.Context(),
+		buildDir,
+		p.Engine,
+		p.MainFile,
+	)
+	if err != nil {
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{
+				"message": err.Error(),
+			},
+		)
+		return
+	}
+
+	if result.Success {
+		currentPDF := filepath.Join(
+			h.storage.ProjectPath(projectID),
+			"current.pdf",
+		)
+
+		if err := copyFile(
+			result.PDFPath,
+			currentPDF,
+		); err != nil {
+			writeJSON(
+				w,
+				http.StatusInternalServerError,
+				map[string]string{
+					"message": "Failed to save compiled PDF.",
+				},
+			)
+			return
+		}
+	}
+
+	result.PDFPath = ""
+
+	writeJSON(
+		w,
+		http.StatusOK,
+		result,
+	)
 }
 
 // ==============================

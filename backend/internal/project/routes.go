@@ -35,6 +35,8 @@ func RegisterRoutes(
 		authHandler.RequireAuth(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
+				case strings.HasSuffix(r.URL.Path, "/compile"):
+					handler.Compile(w, r)
 				case strings.HasSuffix(r.URL.Path, "/files"):
 					handler.Files(w, r)
 
@@ -62,6 +64,7 @@ func RegisterRoutes(
 					default:
 						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 					}
+
 				default:
 					if r.Method != http.MethodGet {
 						w.WriteHeader(http.StatusMethodNotAllowed)
