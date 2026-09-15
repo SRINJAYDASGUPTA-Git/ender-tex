@@ -1,15 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { toast } from "sonner";
+import {useEffect, useState} from "react";
+import {pdfjs} from "react-pdf";
+import "react-pdf/dist/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import {useParams} from "next/navigation";
+import {toast} from "sonner";
 
 import axios from "@/utils/axiosInstance";
 import {FileResponse, Project} from "@/types";
 
-import { ProjectSidebar } from "./project-sidebar";
-import { ProjectToolbar } from "./project-toolbar";
+import {ProjectSidebar} from "./project-sidebar";
+import {ProjectToolbar} from "./project-toolbar";
 import {LatexEditor} from "@/components/projects/latex-editor";
+import {PdfPreview} from "@/components/projects/pdf-preview";
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.min.mjs",
+    import.meta.url
+).toString();
 
 export function ProjectEditor() {
     const params = useParams<{ id: string }>();
@@ -26,6 +35,8 @@ export function ProjectEditor() {
 
     const [fileDirty, setFileDirty] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [pdfVersion, setPdfVersion] = useState(0);
+    const [compiling, setCompiling] = useState(false);
 
     useEffect(() => {
         const loadProject = async () => {
@@ -99,8 +110,31 @@ export function ProjectEditor() {
         }
     };
 
-    const compileProject = () => {
-        toast.info("Compilation coming next.");
+    const compileProject = async () => {
+        if (compiling) {
+            return;
+        }
+
+        try {
+            setCompiling(true);
+
+            const response = await axios.post(
+                `/projects/${params.id}/compile`
+            );
+
+            if (!response.data.success) {
+                toast.error("Compilation failed.");
+                return;
+            }
+
+            setPdfVersion(Date.now());
+            toast.success("Project compiled successfully.");
+        } catch (error) {
+            console.error(error);
+            toast.error("Compilation failed.");
+        } finally {
+            setCompiling(false);
+        }
     };
 
     if (loading) {
@@ -174,10 +208,11 @@ export function ProjectEditor() {
                     )}
                 </main>
 
-                <aside className="hidden w-[40%] border-l xl:block">
-                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                        PDF preview coming next...
-                    </div>
+                <aside className="hidden w-[40%] border-l bg-muted/30 xl:block">
+                    <PdfPreview
+                        projectId={params.id}
+                        version={pdfVersion}
+                    />
                 </aside>
             </div>
         </div>
