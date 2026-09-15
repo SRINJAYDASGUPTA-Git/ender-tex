@@ -79,17 +79,16 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := strings.TrimPrefix(r.URL.Path, "/api/projects/")
-
-	if _, err := h.service.GetForUser(id, userID); err != nil {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"message": "Forbidden.",
-			})
-			return
-		}
-
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"message": "Project ID is required.",
+		})
+		return
+	}
+	
+	if _, err := h.service.GetForUser(id, userID); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"message": "Forbidden.",
 		})
 		return
 	}

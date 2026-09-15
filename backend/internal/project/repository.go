@@ -45,20 +45,20 @@ func (r *Repository) Create(project *Project) error {
 
 func (r *Repository) ListByOwnerOrMember(userId string) ([]*Project, error) {
 	rows, err := r.db.Query(`
-		SELECT
-			id,
-			owner_id,
-			name,
-			main_file,
-			engine,
-			bibliography,
-			created_at,
-			updated_at
+		SELECT DISTINCT
+			p.id,
+			p.owner_id,
+			p.name,
+			p.main_file,
+			p.engine,
+			p.bibliography,
+			p.created_at,
+			p.updated_at
 		FROM projects p
 		LEFT JOIN project_memberships pm ON p.id = pm.project_id
 		WHERE p.owner_id = ?
-		OR pm.member_id = ?
-		ORDER BY updated_at DESC
+		OR pm.user_id = ?
+		ORDER BY p.updated_at DESC
 	`, userId, userId)
 
 	if err != nil {
@@ -129,4 +129,23 @@ func (r *Repository) GetByID(id string) (*Project, error) {
 	}
 
 	return project, nil
+}
+
+func (r *Repository) IsMember(projectID, userID string) (bool, error) {
+	var exists bool
+
+	err := r.db.QueryRow(`
+		SELECT EXISTS (
+    SELECT 1
+    FROM project_memberships
+    WHERE project_id = ?
+      AND user_id = ?
+		)
+	`, projectID, userID).Scan(&exists)
+
+	if err != nil {
+		return false, fmt.Errorf("check membership: %w", err)
+	}
+
+	return exists, nil
 }

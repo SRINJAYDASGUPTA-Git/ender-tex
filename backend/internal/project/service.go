@@ -3,7 +3,6 @@ package project
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -13,6 +12,8 @@ type Service struct {
 	repository *Repository
 	storage    *Storage
 }
+
+var ErrProjectAccessDenied = errors.New("project access denied")
 
 func NewService(
 	repository *Repository,
@@ -73,16 +74,10 @@ func (s *Service) Create(
 		Bibliography: request.Bibliography,
 	}
 
-	if err := s.repository.Create(project); err != nil {
-		return nil, err
-	}
-
 	if err := s.storage.CreateProject(project.ID, mainFile); err != nil {
-		// We don't want an orphaned DB project if filesystem creation fails.
-		// This can be made transactional at the application level later.
 		return nil, fmt.Errorf("initialize project files: %w", err)
 	}
-
+	
 	if err := s.repository.Create(project); err != nil {
 		_ = s.storage.DeleteProject(project.ID)
 	
@@ -100,22 +95,23 @@ func (s *Service) Get(id string) (*Project, error) {
 	return s.repository.GetByID(id)
 }
 
-func (s *Service) GetForUser(
-	projectID string,
-	userID string,
-) (*Project, error) {
+func (s *Service) GetForUser(projectID, userID string) (*Project, error) {
 	project, err := s.repository.GetByID(projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	collaborators := make([]string, 0, len(project.Memberships))
-	for _, membership := range project.Memberships {
-		collaborators = append(collaborators, membership.UserID)
+	if project.OwnerID == userID {
+		return project, nil
 	}
-	
-	if project.OwnerID != userID && !slices.Contains(collaborators, userID) {
-		return nil, fmt.Errorf("project not owned by user")
+
+	member, err := s.repository.IsMember(projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !member {
+		return nil, ErrProjectAccessDenied
 	}
 
 	return project, nil
