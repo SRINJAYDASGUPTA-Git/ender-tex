@@ -66,3 +66,24 @@ export interface CurrentUserResponse {
     user: UserResponse;
     message?: string;
 }
+
+export type LatexEngine =
+    | "pdflatex"
+    | "latex"
+    | "xelatex"
+    | "lualatex";
+
+export type BibliographyBackend =
+    | "biber"
+    | "bibtex";
+
+export interface Project {
+    id: string;
+    ownerId: string;
+    name: string;
+    mainFile: string;
+    engine: LatexEngine;
+    bibliography: BibliographyBackend;
+    createdAt: string;
+    updatedAt: string;
+}
