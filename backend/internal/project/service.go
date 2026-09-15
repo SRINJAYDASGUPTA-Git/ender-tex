@@ -77,10 +77,10 @@ func (s *Service) Create(
 	if err := s.storage.CreateProject(project.ID, mainFile); err != nil {
 		return nil, fmt.Errorf("initialize project files: %w", err)
 	}
-	
+
 	if err := s.repository.Create(project); err != nil {
 		_ = s.storage.DeleteProject(project.ID)
-	
+
 		return nil, fmt.Errorf("create project: %w", err)
 	}
 

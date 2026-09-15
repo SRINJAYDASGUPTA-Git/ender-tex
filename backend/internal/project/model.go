@@ -16,22 +16,22 @@ const (
 )
 
 type ProjectMembership struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"projectId"`
-	UserID      string `json:"userId"`
-	Permission  string `json:"permission"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID         string    `json:"id"`
+	ProjectID  string    `json:"projectId"`
+	UserID     string    `json:"userId"`
+	Permission string    `json:"permission"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type Project struct {
-	ID           string    `json:"id"`
-	OwnerID      string    `json:"ownerId"`
-	Name         string    `json:"name"`
-	MainFile     string    `json:"mainFile"`
-	Engine       string    `json:"engine"`
-	Bibliography string    `json:"bibliography"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID           string              `json:"id"`
+	OwnerID      string              `json:"ownerId"`
+	Name         string              `json:"name"`
+	MainFile     string              `json:"mainFile"`
+	Engine       string              `json:"engine"`
+	Bibliography string              `json:"bibliography"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	UpdatedAt    time.Time           `json:"updatedAt"`
 	Memberships  []ProjectMembership `json:"memberships"`
 }
 
@@ -40,4 +40,10 @@ type CreateProjectRequest struct {
 	MainFile     string `json:"mainFile"`
 	Engine       string `json:"engine"`
 	Bibliography string `json:"bibliography"`
-}	
+}
+
+type FileEntry struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}

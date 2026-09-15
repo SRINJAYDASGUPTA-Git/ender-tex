@@ -199,4 +199,3 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, user)
 }
-

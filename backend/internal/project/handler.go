@@ -61,8 +61,8 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	projects, err := h.service.List(userID)
 
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"message": "Failed to load projects.",
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"message": err.Error(),
 		})
 		return
 	}
@@ -85,36 +85,11 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	
-	if _, err := h.service.GetForUser(id, userID); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"message": "Forbidden.",
-		})
-		return
-	}
 
-	project, err := h.service.Get(id)
-
-	if errors.Is(err, ErrProjectNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"message": "Project not found.",
-		})
-		return
-	}
+	project, err := h.service.GetForUser(id, userID)
 
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{
-			"message": "Failed to load project.",
-		})
-		return
-	}
-
-	// For now, ownership is the only access rule.
-	// Membership access will be added next.
-	if project.OwnerID != userID {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"message": "You do not have access to this project.",
-		})
+		handleProjectAccessError(w, err)
 		return
 	}
 
@@ -122,7 +97,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
-	
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -140,22 +115,15 @@ func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	
+
 	if _, err := h.service.GetForUser(projectID, userID); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"message": "Forbidden.",
-		})
+		handleProjectAccessError(w, err)
 		return
 	}
 
 	files, err := h.storage.ListFiles(projectID)
 	if err != nil {
-		if errors.Is(err, ErrFileNotFound) {
-			http.Error(w, "project not found", http.StatusNotFound)
-			return
-		}
-
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		handleProjectAccessError(w, err)
 		return
 	}
 
@@ -165,36 +133,319 @@ func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) File(w http.ResponseWriter, r *http.Request) {
-	projectID, filePath, projectOk := projectFileFromPath(r.URL.Path)
-	if !projectOk {
+	projectID, filePath, ok := projectFileFromPath(r.URL.Path)
+	if !ok {
 		http.Error(w, "invalid file path", http.StatusBadRequest)
 		return
 	}
 
 	userID, ok := auth.UserIDFromContext(r.Context())
-
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	if _, err := h.service.GetForUser(projectID, userID); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"message": "Forbidden.",
-		})
+		handleProjectAccessError(w, err)
 		return
 	}
-	
 
 	switch r.Method {
 	case http.MethodGet:
 		h.readFile(w, projectID, filePath)
 
+	case http.MethodPost:
+		h.createFile(w, projectID, filePath)
+
 	case http.MethodPut:
 		h.writeFile(w, r, projectID, filePath)
 
+	case http.MethodPatch:
+		h.renameFile(w, r, projectID, filePath)
+
+	case http.MethodDelete:
+		h.deleteFile(w, projectID, filePath)
+
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// ==============================
+// CRUD Files
+// ==============================
+
+func (h *Handler) createFile(
+	w http.ResponseWriter,
+	projectID string,
+	filePath string,
+) {
+	if err := h.storage.CreateFile(projectID, filePath); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPath):
+			http.Error(w, "invalid file path", http.StatusBadRequest)
+
+		case errors.Is(err, ErrAlreadyExists):
+			http.Error(w, "file already exists", http.StatusConflict)
+
+		default:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"path": filePath,
+	})
+}
+func (h *Handler) deleteFile(
+	w http.ResponseWriter,
+	projectID string,
+	filePath string,
+) {
+	if err := h.storage.DeleteFile(projectID, filePath); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPath):
+			http.Error(w, "invalid file path", http.StatusBadRequest)
+
+		case errors.Is(err, ErrFileNotFound):
+			http.Error(w, "file not found", http.StatusNotFound)
+
+		case errors.Is(err, ErrIsDirectory):
+			http.Error(w, "path is a directory", http.StatusConflict)
+
+		default:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) renameFile(
+	w http.ResponseWriter,
+	r *http.Request,
+	projectID string,
+	filePath string,
+) {
+	var request struct {
+		NewPath string `json:"newPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	request.NewPath = strings.TrimSpace(request.NewPath)
+
+	if request.NewPath == "" {
+		http.Error(w, "new path is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.storage.RenameFile(
+		projectID,
+		filePath,
+		request.NewPath,
+	); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPath):
+			http.Error(w, "invalid file path", http.StatusBadRequest)
+
+		case errors.Is(err, ErrFileNotFound):
+			http.Error(w, "file not found", http.StatusNotFound)
+
+		case errors.Is(err, ErrAlreadyExists):
+			http.Error(w, "destination already exists", http.StatusConflict)
+
+		case errors.Is(err, ErrIsDirectory):
+			http.Error(w, "path is a directory", http.StatusConflict)
+
+		default:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"oldPath": filePath,
+		"newPath": request.NewPath,
+	})
+}
+
+// ==============================
+// CRUD Folder
+// ==============================
+
+func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
+	projectID, dirPath, ok := projectDirectoryFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid directory path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForUser(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	if err := h.storage.CreateDirectory(projectID, dirPath); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPath):
+			http.Error(w, "invalid directory path", http.StatusBadRequest)
+
+		case errors.Is(err, ErrAlreadyExists):
+			http.Error(w, "directory already exists", http.StatusConflict)
+
+		default:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"path": dirPath,
+	})
+}
+
+func (h *Handler) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
+	projectID, dirPath, ok := projectDirectoryFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid directory path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForUser(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	if err := h.storage.DeleteDirectory(projectID, dirPath); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPath):
+			http.Error(w, "invalid directory path", http.StatusBadRequest)
+
+		case errors.Is(err, ErrFileNotFound):
+			http.Error(w, "directory not found", http.StatusNotFound)
+
+		case errors.Is(err, ErrNotDirectory):
+			http.Error(w, "path is not a directory", http.StatusConflict)
+
+		case errors.Is(err, ErrDirectoryNotEmpty):
+			http.Error(w, "directory is not empty", http.StatusConflict)
+
+		default:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) RenameDirectory(w http.ResponseWriter, r *http.Request) {
+	projectID, dirPath, ok := projectDirectoryFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid directory path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForUser(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	var request struct {
+		NewPath string `json:"newPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	request.NewPath = strings.TrimSpace(request.NewPath)
+
+	if request.NewPath == "" {
+		http.Error(w, "new path is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.storage.RenameDirectory(
+		projectID,
+		dirPath,
+		request.NewPath,
+	); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPath):
+			http.Error(w, "invalid directory path", http.StatusBadRequest)
+
+		case errors.Is(err, ErrFileNotFound):
+			http.Error(w, "directory not found", http.StatusNotFound)
+
+		case errors.Is(err, ErrAlreadyExists):
+			http.Error(w, "destination already exists", http.StatusConflict)
+
+		case errors.Is(err, ErrNotDirectory):
+			http.Error(w, "path is not a directory", http.StatusConflict)
+
+		default:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"oldPath": dirPath,
+		"newPath": request.NewPath,
+	})
+}
+
+// ==============================
+// Helper Functions
+// ==============================
+func handleProjectAccessError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrProjectNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"message": "Project not found.",
+		})
+
+	case errors.Is(err, ErrProjectAccessDenied):
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"message": "You do not have access to this project.",
+		})
+
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": "Failed to access project.",
+		})
 	}
 }
 
@@ -302,4 +553,22 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.WriteHeader(status)
 
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func projectDirectoryFromPath(path string) (string, string, bool) {
+	const prefix = "/api/projects/"
+
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+
+	rest := strings.TrimPrefix(path, prefix)
+
+	parts := strings.SplitN(rest, "/", 2)
+
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+
+	return parts[0], parts[1], true
 }

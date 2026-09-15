@@ -41,6 +41,27 @@ func RegisterRoutes(
 				case strings.Contains(r.URL.Path, "/files/"):
 					handler.File(w, r)
 
+				case strings.HasSuffix(r.URL.Path, "/folders"):
+					http.Error(
+						w,
+						"method not allowed",
+						http.StatusMethodNotAllowed,
+					)
+
+				case strings.Contains(r.URL.Path, "/folders/"):
+					switch r.Method {
+					case http.MethodPost:
+						handler.CreateDirectory(w, r)
+
+					case http.MethodPatch:
+						handler.RenameDirectory(w, r)
+
+					case http.MethodDelete:
+						handler.DeleteDirectory(w, r)
+
+					default:
+						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					}
 				default:
 					if r.Method != http.MethodGet {
 						w.WriteHeader(http.StatusMethodNotAllowed)

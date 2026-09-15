@@ -9,8 +9,12 @@ import (
 )
 
 var (
-	ErrInvalidPath = errors.New("invalid project file path")
-	ErrFileNotFound = errors.New("file not found")
+	ErrInvalidPath       = errors.New("invalid project file path")
+	ErrFileNotFound      = errors.New("file not found")
+	ErrAlreadyExists     = errors.New("path already exists")
+	ErrIsDirectory       = errors.New("path is a directory")
+	ErrNotDirectory      = errors.New("path is not a directory")
+	ErrDirectoryNotEmpty = errors.New("directory is not empty")
 )
 
 type Storage struct {
@@ -42,9 +46,9 @@ func (s *Storage) CreateProject(projectID, mainFile string) error {
 		return fmt.Errorf("create project directory: %w", err)
 	}
 	filePath, err := s.safeFilePath(projectID, mainFile)
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
+	}
 
 	content := `\documentclass{article}
 
@@ -64,10 +68,10 @@ Start writing your paper here.
 	return nil
 }
 
-func (s *Storage) ListFiles(projectID string) ([]string, error) {
+func (s *Storage) ListFiles(projectID string) ([]FileEntry, error) {
 	projectPath := s.ProjectPath(projectID)
 
-	var files []string
+	var entries []FileEntry
 
 	err := filepath.Walk(projectPath, func(
 		path string,
@@ -78,7 +82,8 @@ func (s *Storage) ListFiles(projectID string) ([]string, error) {
 			return err
 		}
 
-		if info.IsDir() {
+		// Don't include the project root itself.
+		if path == projectPath {
 			return nil
 		}
 
@@ -87,7 +92,16 @@ func (s *Storage) ListFiles(projectID string) ([]string, error) {
 			return err
 		}
 
-		files = append(files, filepath.ToSlash(relativePath))
+		entryType := "file"
+		if info.IsDir() {
+			entryType = "directory"
+		}
+
+		entries = append(entries, FileEntry{
+			Path: filepath.ToSlash(relativePath),
+			Name: info.Name(),
+			Type: entryType,
+		})
 
 		return nil
 	})
@@ -100,7 +114,7 @@ func (s *Storage) ListFiles(projectID string) ([]string, error) {
 		return nil, fmt.Errorf("list project files: %w", err)
 	}
 
-	return files, nil
+	return entries, nil
 }
 
 func (s *Storage) ReadFile(projectID, filePath string) ([]byte, error) {
@@ -177,4 +191,203 @@ func (s *Storage) safeFilePath(projectID, filePath string) (string, error) {
 
 func (s *Storage) DeleteProject(projectID string) error {
 	return os.RemoveAll(s.ProjectPath(projectID))
+}
+func (s *Storage) CreateFile(projectID, filePath string) error {
+	path, err := s.safeFilePath(projectID, filePath)
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("file already exists")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check file: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create file directory: %w", err)
+	}
+
+	if err := os.WriteFile(path, []byte{}, 0644); err != nil {
+		return fmt.Errorf("create project file: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) DeleteFile(projectID, filePath string) error {
+	path, err := s.safeFilePath(projectID, filePath)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrFileNotFound
+		}
+
+		return fmt.Errorf("stat project file: %w", err)
+	}
+
+	if info.IsDir() {
+		return errors.New("path is a directory")
+	}
+
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("delete project file: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) RenameFile(
+	projectID string,
+	oldPath string,
+	newPath string,
+) error {
+	source, err := s.safeFilePath(projectID, oldPath)
+	if err != nil {
+		return err
+	}
+
+	destination, err := s.safeFilePath(projectID, newPath)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(source)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrFileNotFound
+		}
+
+		return fmt.Errorf("stat source file: %w", err)
+	}
+
+	if info.IsDir() {
+		return errors.New("source path is a directory")
+	}
+
+	if _, err := os.Stat(destination); err == nil {
+		return errors.New("destination already exists")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check destination: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
+
+	if err := os.Rename(source, destination); err != nil {
+		return fmt.Errorf("rename project file: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) CreateDirectory(
+	projectID string,
+	dirPath string,
+) error {
+	path, err := s.safeFilePath(projectID, dirPath)
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		return errors.New("directory already exists")
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check directory: %w", err)
+	}
+
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return fmt.Errorf("create project directory: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) DeleteDirectory(
+	projectID string,
+	dirPath string,
+) error {
+	path, err := s.safeFilePath(projectID, dirPath)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrFileNotFound
+		}
+
+		return fmt.Errorf("stat directory: %w", err)
+	}
+
+	if !info.IsDir() {
+		return errors.New("path is not a directory")
+	}
+
+	// Do not silently delete an entire directory tree.
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("read directory: %w", err)
+	}
+
+	if len(entries) > 0 {
+		return errors.New("directory is not empty")
+	}
+
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("delete project directory: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) RenameDirectory(
+	projectID string,
+	oldPath string,
+	newPath string,
+) error {
+	source, err := s.safeFilePath(projectID, oldPath)
+	if err != nil {
+		return err
+	}
+
+	destination, err := s.safeFilePath(projectID, newPath)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(source)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrFileNotFound
+		}
+
+		return fmt.Errorf("stat source directory: %w", err)
+	}
+
+	if !info.IsDir() {
+		return ErrNotDirectory
+	}
+
+	if _, err := os.Stat(destination); err == nil {
+		return ErrAlreadyExists
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check destination: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destination), 0755); err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
+
+	if err := os.Rename(source, destination); err != nil {
+		return fmt.Errorf("rename project directory: %w", err)
+	}
+
+	return nil
 }
