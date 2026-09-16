@@ -51,6 +51,8 @@ export type UserRole = "ADMIN" | "COLLABORATOR";
 export interface UserResponse {
     id: string;
     email: string;
+    name: string;
+    project_ids: string[];
     role: UserRole;
     createdAt: string;
     updatedAt: string;

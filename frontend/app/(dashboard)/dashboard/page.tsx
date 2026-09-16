@@ -1,15 +1,13 @@
 "use client";
 
-import {CheckCircle2, Circle, ListTodo, Plus, Sparkles, Target,} from "lucide-react";
+import {Plus, Sparkles,} from "lucide-react";
 
-import {useEffect, useMemo, useState} from "react";
+import {useEffect} from "react";
 import {useRouter} from "next/navigation";
 
 import {useUser} from "@/providers/UserContext";
-import axios from "@/utils/axiosInstance";
 
 import {Button} from "@/components/ui/button";
-import {Card, CardContent, CardHeader, CardTitle,} from "@/components/ui/card";
 import {toast} from "@/components/ui/toast";
 
 export default function Home() {
@@ -59,7 +57,7 @@ export default function Home() {
             </div>
 
             <h1 className="text-3xl font-bold tracking-tight">
-              Hey, 👋
+              Hey, {user.name} 👋
             </h1>
 
             <p className="mt-1 text-muted-foreground">

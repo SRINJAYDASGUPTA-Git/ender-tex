@@ -4,38 +4,33 @@ const BACKEND_URL =
     process.env.BACKEND_URL ?? "http://localhost:8080";
 
 export async function POST(request: NextRequest) {
-    try {
-        const body = await request.json();
+    const body = await request.json();
 
-        const backendResponse = await fetch(
-            `${BACKEND_URL}/api/auth/accept-invitation`,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(body),
-                cache: "no-store",
-            }
-        );
+    const cookie = request.headers.get("cookie");
 
-        const data = await backendResponse.json();
-
-        if (!backendResponse.ok) {
-            return NextResponse.json(data, {
-                status: backendResponse.status,
-            });
+    const response = await fetch(
+        `${BACKEND_URL}/api/auth/accept-invitation`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(cookie ? { Cookie: cookie } : {}),
+            },
+            body: JSON.stringify(body),
         }
+    );
 
-        return NextResponse.json(data, {
-            status: backendResponse.status,
-        });
-    } catch (error) {
-        console.error("Accept invitation proxy failed:", error);
+    const data = await response.json();
 
-        return NextResponse.json(
-            { message: "Authentication service unavailable." },
-            { status: 502 }
-        );
+    const nextResponse = NextResponse.json(data, {
+        status: response.status,
+    });
+
+    const setCookie = response.headers.get("set-cookie");
+
+    if (setCookie) {
+        nextResponse.headers.set("set-cookie", setCookie);
     }
+
+    return nextResponse;
 }

@@ -101,13 +101,13 @@ export function AppNavbar() {
                                 >
                                     <Avatar className="size-8 rounded-lg">
                                         <AvatarFallback className="rounded-lg">
-                                            {getInitials(user.email)}
+                                            {getInitials(user.name)}
                                         </AvatarFallback>
                                     </Avatar>
 
                                     <div className="hidden text-left leading-tight sm:block">
                                         <div className="max-w-48 truncate text-sm font-medium">
-                                            {user.email}
+                                            {user.name}
                                         </div>
 
                                         <div className="text-xs text-muted-foreground">
