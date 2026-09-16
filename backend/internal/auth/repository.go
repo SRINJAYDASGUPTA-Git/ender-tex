@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	
 
 	"github.com/google/uuid"
 )
@@ -278,7 +280,7 @@ func (r *Repository) DeleteInvitation(id string) error {
 	return nil
 }
 
-func (r *Repository) AcceptInvitation(
+func (r *Repository) AcceptNewUserInvitation(
 	invitation *Invitation,
 	passwordHash string,
 ) (*User, *Session, string, error) {
@@ -287,43 +289,35 @@ func (r *Repository) AcceptInvitation(
 		return nil, nil, "", fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-	var user *User
-	if invitation.ExistingUser {
-		user, err = r.GetUserByEmail(invitation.Email)
-		if err != nil {
-			return nil, nil, "", fmt.Errorf("get user by email: %w", err)
-		}
-		if user == nil {
-			return nil, nil, "", fmt.Errorf("user not found")
-		}
-	} else {
-		user = &User{
-			ID:           uuid.NewString(),
-			Email:        invitation.Email,
-			Name:         invitation.Name,
-			PasswordHash: passwordHash,
-			Role:         invitation.Role,
-		}
-		_, err = tx.Exec(`
-			INSERT INTO users (
-				id,
-				email,
-				name,
-				password_hash,
-				role
-			)
-			VALUES (?, ?, ?, ?, ?)
-		`,
-			user.ID,
-			user.Email,
-			user.Name,
-			user.PasswordHash,
-			user.Role,
-		)
-		if err != nil {
-			return nil, nil, "", fmt.Errorf("create invited user: %w", err)
-		}
+
+	user := &User{
+		ID:           uuid.NewString(),
+		Email:        invitation.Email,
+		Name:         invitation.Name,
+		PasswordHash: passwordHash,
+		Role:         invitation.Role,
 	}
+	_, err = tx.Exec(`
+		INSERT INTO users (
+			id,
+			email,
+			name,
+			password_hash,
+			role
+		)
+		VALUES (?, ?, ?, ?, ?)
+	`,
+		user.ID,
+		user.Email,
+		user.Name,
+		user.PasswordHash,
+		user.Role,
+	)
+
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("create invited user: %w", err)
+	}
+	
 	_, err = tx.Exec(`
 		INSERT OR IGNORE INTO project_memberships (user_id, project_id)
 		VALUES (?, ?)
@@ -391,4 +385,72 @@ func (r *Repository) AcceptInvitation(
 	}
 
 	return user, session, sessionToken, nil
+}
+
+func (r *Repository) AcceptExistingUserInvitation(
+	invitation *Invitation,
+	user *User,
+) (*User, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if !strings.EqualFold(user.Email, invitation.Email) {
+		return nil, errors.New("invitation email does not match user")
+	}
+
+	_, err = tx.Exec(`
+		INSERT OR IGNORE INTO project_memberships (
+			user_id,
+			project_id
+		)
+		VALUES (?, ?)
+	`,
+		user.ID,
+		invitation.ProjectID,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf(
+			"create project membership: %w",
+			err,
+		)
+	}
+
+	result, err := tx.Exec(`
+		DELETE FROM invitations
+		WHERE id = ?
+	`,
+		invitation.ID,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf(
+			"consume invitation: %w",
+			err,
+		)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"check invitation consumption: %w",
+			err,
+		)
+	}
+
+	if rows != 1 {
+		return nil, ErrInvitationNotFound
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf(
+			"commit invitation acceptance: %w",
+			err,
+		)
+	}
+
+	return user, nil
 }

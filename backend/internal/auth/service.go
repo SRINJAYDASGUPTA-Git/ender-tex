@@ -379,16 +379,15 @@ func (s *Service) CreateInvitation(email string, name string, role Role, project
 func (s *Service) AcceptInvitation(
 	token string,
 	password string,
+	authenticatedUser *User,
 ) (*InvitationAcceptance, error) {
 	if token == "" {
 		return nil, ErrInvitationNotFound
 	}
 
-	if len(password) < 8 {
-		return nil, errors.New("password must be at least 8 characters")
-	}
-
-	invitation, err := s.repository.GetInvitationByTokenHash(hashToken(token))
+	invitation, err := s.repository.GetInvitationByTokenHash(
+		hashToken(token),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -398,27 +397,70 @@ func (s *Service) AcceptInvitation(
 		return nil, errors.New("invitation has expired")
 	}
 
-	passwordHash, err := hashPassword(password)
-	if err != nil {
-		return nil, fmt.Errorf("hash password: %w", err)
+	// Existing user:
+	// User must already be authenticated.
+	if invitation.ExistingUser {
+		if authenticatedUser == nil {
+			return nil, errors.New("authentication required")
+		}
+
+		if !strings.EqualFold(
+			authenticatedUser.Email,
+			invitation.Email,
+		) {
+			return nil, errors.New(
+				"invitation email does not match authenticated user",
+			)
+		}
+
+		user, err := s.repository.AcceptExistingUserInvitation(
+			invitation,
+			authenticatedUser,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return &InvitationAcceptance{
+			User:        user,
+			Session:     nil,
+			SessionToken: "",
+			ProjectID:   invitation.ProjectID,
+		}, nil
 	}
 
-	user, session, sessionToken, err := s.repository.AcceptInvitation(
-		invitation,
-		passwordHash,
-	)
+	// New user
+	if len(password) < 8 {
+		return nil, errors.New(
+			"password must be at least 8 characters",
+		)
+	}
+
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"hash password: %w",
+			err,
+		)
+	}
+
+	user, session, sessionToken, err :=
+		s.repository.AcceptNewUserInvitation(
+			invitation,
+			passwordHash,
+		)
+
 	if err != nil {
 		return nil, err
 	}
 
 	return &InvitationAcceptance{
-		User:        user,
-		Session:     session,
+		User:         user,
+		Session:      session,
 		SessionToken: sessionToken,
-		ProjectID:   invitation.ProjectID,
+		ProjectID:    invitation.ProjectID,
 	}, nil
 }
-
 func (s *Service) GetInvitationDetails(
 	token string,
 ) (*Invitation, error) {

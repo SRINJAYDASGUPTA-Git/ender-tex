@@ -248,11 +248,19 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var authenticatedUser *User
+	
+	cookie, err := r.Cookie(sessionCookieName)
+	if err == nil && cookie.Value != "" {
+		authenticatedUser, _ = h.service.GetUserBySessionToken(cookie.Value)
+	}
+	
 	acceptance, err := h.service.AcceptInvitation(
 		req.Token,
 		req.Password,
-		
+		authenticatedUser,
 	)
+	
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvitationNotFound):
@@ -265,15 +273,17 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    acceptance.SessionToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   false, // true in production HTTPS
-		SameSite: http.SameSiteLaxMode,
-		Expires:  acceptance.Session.ExpiresAt,
-	})
+	if acceptance.Session != nil {
+		http.SetCookie(w, &http.Cookie{
+			Name:     sessionCookieName,
+			Value:    acceptance.SessionToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   false, // true in production HTTPS
+			SameSite: http.SameSiteLaxMode,
+			Expires:  acceptance.Session.ExpiresAt,
+		})
+	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"user":       acceptance.User,
