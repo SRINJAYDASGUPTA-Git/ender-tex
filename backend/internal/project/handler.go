@@ -31,6 +31,18 @@ func NewHandler(
 	}
 }
 
+// Create creates a new LaTeX project for the authenticated user.
+//
+//	@Summary		Create project
+//	@Description	Creates a new LaTeX project and assigns the authenticated user as its owner.
+//	@Tags			Projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		CreateProjectRequest	true	"Project configuration"
+//	@Success		201		{object}	Project
+//	@Failure		400		{object}	map[string]string
+//	@Failure		401		{string}	string	"Unauthorized"
+//	@Router			/projects [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserIDFromContext(r.Context())
 
@@ -60,6 +72,16 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, project)
 }
 
+// List returns all projects accessible to the authenticated user.
+//
+//	@Summary		List projects
+//	@Description	Returns projects available to the authenticated user.
+//	@Tags			Projects
+//	@Produce		json
+//	@Success		200	{array}		Project
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		400	{object}	map[string]string
+//	@Router			/projects [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserIDFromContext(r.Context())
 
@@ -80,6 +102,19 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, projects)
 }
 
+// Get returns a project accessible to the authenticated user.
+//
+//	@Summary		Get project
+//	@Description	Returns project metadata and membership information for a project.
+//	@Tags			Projects
+//	@Produce		json
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Success		200			{object}	Project
+//	@Failure		400			{object}	map[string]string
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{object}	map[string]string
+//	@Failure		404			{object}	map[string]string
+//	@Router			/projects/{projectId} [get]
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.UserIDFromContext(r.Context())
 
@@ -106,6 +141,19 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, project)
 }
 
+// Files lists all files in a project.
+//
+//	@Summary		List project files
+//	@Description	Returns the files and directories contained in a project.
+//	@Tags			Files
+//	@Produce		json
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Success		200			{object}	map[string]interface{}
+//	@Failure		400			{string}	string	"Invalid project path"
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{object}	map[string]string
+//	@Failure		404			{object}	map[string]string
+//	@Router			/projects/{projectId}/files [get]
 func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodGet {
@@ -142,6 +190,28 @@ func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// File handles file operations within a project.
+//
+//	@Summary		File operations
+//	@Description	Provides read, create, update, rename, and delete operations for project files.
+//	@Tags			Files
+//	@Produce		json
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Param			filePath	path		string	true	"Project-relative file path"
+//	@Success		200			{object}	map[string]interface{}
+//	@Success		201			{object}	map[string]string
+//	@Success		204
+//	@Failure		400	{string}	string	"Invalid file path or request"
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		403	{object}	map[string]string
+//	@Failure		404	{string}	string	"File not found"
+//	@Failure		409	{string}	string	"File conflict"
+//	@Failure		500	{string}	string	"Internal server error"
+//	@Router			/projects/{projectId}/files/{filePath} [get]
+//	@Router			/projects/{projectId}/files/{filePath} [post]
+//	@Router			/projects/{projectId}/files/{filePath} [put]
+//	@Router			/projects/{projectId}/files/{filePath} [patch]
+//	@Router			/projects/{projectId}/files/{filePath} [delete]
 func (h *Handler) File(w http.ResponseWriter, r *http.Request) {
 	projectID, filePath, ok := projectFileFromPath(r.URL.Path)
 	filePath = filePath[6:]
@@ -183,6 +253,20 @@ func (h *Handler) File(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Compile compiles the project's main LaTeX document.
+//
+//	@Summary		Compile project
+//	@Description	Compiles the project's main LaTeX document using the configured LaTeX engine.
+//	@Tags			Compilation
+//	@Produce		json
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Success		200			{object}	compiler.Result
+//	@Failure		400			{string}	string	"Invalid project path"
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{object}	map[string]string
+//	@Failure		404			{object}	map[string]string
+//	@Failure		500			{object}	map[string]string	"Compilation or server error"
+//	@Router			/projects/{projectId}/compile [post]
 func (h *Handler) Compile(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -302,6 +386,20 @@ func (h *Handler) Compile(
 	)
 }
 
+// PDF returns the latest compiled PDF for a project.
+//
+//	@Summary		Get compiled PDF
+//	@Description	Returns the most recently compiled PDF for the project.
+//	@Tags			Compilation
+//	@Produce		application/pdf
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Success		200			{file}		binary
+//	@Failure		400			{string}	string	"Invalid project path"
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{object}	map[string]string
+//	@Failure		404			{string}	string	"PDF not found"
+//	@Failure		500			{string}	string	"Internal server error"
+//	@Router			/projects/{projectId}/pdf [get]
 func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(
@@ -371,6 +469,7 @@ func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 
 	http.ServeFile(w, r, pdfPath)
 }
+
 // ==============================
 // CRUD Files
 // ==============================
@@ -482,6 +581,22 @@ func (h *Handler) renameFile(
 // CRUD Folder
 // ==============================
 
+// CreateDirectory creates a directory inside a project.
+//
+//	@Summary		Create directory
+//	@Description	Creates a new directory within the project.
+//	@Tags			Folders
+//	@Accept			json
+//	@Produce		json
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Param			folderPath	path		string	true	"Project-relative directory path"
+//	@Success		201			{object}	map[string]string
+//	@Failure		400			{string}	string	"Invalid directory path"
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{object}	map[string]string
+//	@Failure		409			{string}	string	"Directory already exists"
+//	@Failure		500			{string}	string	"Internal server error"
+//	@Router			/projects/{projectId}/folders/{folderPath} [post]
 func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 	projectID, dirPath, ok := projectDirectoryFromPath(r.URL.Path)
 	fmt.Println("projectID/dirPath", projectID, dirPath)
@@ -523,6 +638,22 @@ func (h *Handler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DeleteDirectory deletes an empty directory from a project.
+//
+//	@Summary		Delete directory
+//	@Description	Deletes an empty directory from the project.
+//	@Tags			Folders
+//	@Produce		json
+//	@Param			projectId	path	string	true	"Project ID"
+//	@Param			folderPath	path	string	true	"Project-relative directory path"
+//	@Success		204
+//	@Failure		400	{string}	string	"Invalid directory path"
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		403	{object}	map[string]string
+//	@Failure		404	{string}	string	"Directory not found"
+//	@Failure		409	{string}	string	"Directory is not empty"
+//	@Failure		500	{string}	string	"Internal server error"
+//	@Router			/projects/{projectId}/folders/{folderPath} [delete]
 func (h *Handler) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
 	projectID, dirPath, ok := projectDirectoryFromPath(r.URL.Path)
 	if !ok {
@@ -567,6 +698,24 @@ func (h *Handler) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// RenameDirectory renames a directory within a project.
+//
+//	@Summary		Rename directory
+//	@Description	Renames a project directory.
+//	@Tags			Folders
+//	@Accept			json
+//	@Produce		json
+//	@Param			projectId	path		string				true	"Project ID"
+//	@Param			folderPath	path		string				true	"Project-relative directory path"
+//	@Param			request		body		map[string]string	true	"New directory path"
+//	@Success		200			{object}	map[string]string
+//	@Failure		400			{string}	string	"Invalid request or directory path"
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{object}	map[string]string
+//	@Failure		404			{string}	string	"Directory not found"
+//	@Failure		409			{string}	string	"Destination already exists"
+//	@Failure		500			{string}	string	"Internal server error"
+//	@Router			/projects/{projectId}/folders/{folderPath} [patch]
 func (h *Handler) RenameDirectory(w http.ResponseWriter, r *http.Request) {
 	projectID, dirPath, ok := projectDirectoryFromPath(r.URL.Path)
 	if !ok {

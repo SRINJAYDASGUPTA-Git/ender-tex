@@ -35,6 +35,18 @@ type acceptInvitationRequest struct {
 	Password string `json:"password"`
 }
 
+// Login authenticates a user and creates a session.
+//
+//	@Summary		Login
+//	@Description	Authenticates a user using email and password.
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		loginRequest	true	"Login credentials"
+//	@Success		200		{object}	User
+//	@Failure		400		{string}	string
+//	@Failure		401		{string}	string
+//	@Router			/auth/login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -78,6 +90,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, user)
 }
 
+// Logout terminates the current user session.
+//
+//	@Summary		Logout
+//	@Description	Invalidates the current session and clears the session cookie.
+//	@Tags			Authentication
+//	@Success		204
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Router			/auth/logout [post]
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -103,6 +123,17 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Me returns the currently authenticated user.
+//
+//	@Summary		Get current user
+//	@Description	Returns the user associated with the current session.
+//	@Tags			Authentication
+//	@Produce		json
+// 	@Security SessionCookie
+//	@Success		200	{object}	User
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		405	{string}	string	"Method not allowed"
+//	@Router			/auth/me [get]
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -135,6 +166,18 @@ func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+// CreateInvitation creates an invitation for a new collaborator.
+//
+//	@Summary		Create invitation
+//	@Description	Creates a collaborator invitation and returns the invitation token.
+//	@Tags			Administration
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		createInvitationRequest	true	"Invitation details"
+//	@Success		201		{object}	map[string]interface{}	"Created invitation"
+//	@Failure		400		{string}	string					"Invalid request or invitation"
+//	@Failure		405		{string}	string					"Method not allowed"
+//	@Router			/admin/invitations [post]
 func (h *Handler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -168,6 +211,18 @@ func (h *Handler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// AcceptInvitation accepts an invitation and creates a collaborator account.
+//
+//	@Summary		Accept invitation
+//	@Description	Accepts a valid invitation token and creates the associated user account.
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		acceptInvitationRequest	true	"Invitation acceptance details"
+//	@Success		201		{object}	User
+//	@Failure		400		{string}	string	"Invalid invitation or request"
+//	@Failure		405		{string}	string	"Method not allowed"
+//	@Router			/auth/accept-invitation [post]
 func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
