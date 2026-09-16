@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/argon2"
+
+	"paper-server/internal/email"
 )
 
 const (
@@ -27,18 +29,39 @@ const (
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
+type ProjectChecker interface {
+	Exists(projectID string) (bool, error)
+	GetName(projectID string) (string, error)
+}
+type InvitationAcceptance struct {
+	User        *User
+	Session     *Session
+	SessionToken string
+	ProjectID   string
+}
 type Service struct {
-	repository *Repository
+	repository  *Repository
+	checker     ProjectChecker
+	emailSender email.Service
+	appURL      string
 }
 
-func NewService(repository *Repository) *Service {
+func NewService(
+	repository *Repository,
+	checker ProjectChecker,
+	emailSender email.Service,
+	appURL string,
+) *Service {
 	return &Service{
-		repository: repository,
+		repository:  repository,
+		checker:     checker,
+		emailSender: emailSender,
+		appURL:      appURL,
 	}
 }
-
 func (s *Service) CreateUser(
 	email string,
+	name string,
 	password string,
 	role Role,
 ) (*User, error) {
@@ -61,6 +84,7 @@ func (s *Service) CreateUser(
 	user := &User{
 		ID:           uuid.NewString(),
 		Email:        email,
+		Name:         name,
 		PasswordHash: passwordHash,
 		Role:         role,
 	}
@@ -266,11 +290,11 @@ func (s *Service) DeleteSession(token string) error {
 
 	return s.repository.DeleteSession(hashToken(token))
 }
-func (s *Service) CreateAdmin(email, password string) (*User, error) {
-	return s.CreateUser(email, password, RoleAdmin)
+func (s *Service) CreateAdmin(email, name, password string) (*User, error) {
+	return s.CreateUser(email, name, password, RoleAdmin)
 }
 
-func (s *Service) CreateInvitation(email string, role Role) (*Invitation, string, error) {
+func (s *Service) CreateInvitation(email string, name string, role Role, projectID string) (*Invitation, string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	if email == "" {
@@ -281,14 +305,31 @@ func (s *Service) CreateInvitation(email string, role Role) (*Invitation, string
 		return nil, "", errors.New("invalid invitation role")
 	}
 
-	// Don't allow invitations for existing accounts.
-	_, err := s.repository.GetUserByEmail(email)
-	if err == nil {
-		return nil, "", errors.New("user already exists")
+	if projectID == "" {
+		return nil, "", errors.New("project_id is required")
 	}
 
-	if !errors.Is(err, ErrUserNotFound) {
-		return nil, "", err
+	exists, err := s.checker.Exists(projectID)
+	if err != nil {
+		return nil, "", fmt.Errorf("check project exists: %w", err)
+	}
+	if !exists {
+		return nil, "", errors.New("project not found")
+	}
+
+	projectName, err := s.checker.GetName(projectID)
+	if err != nil {
+		return nil, "", fmt.Errorf("get project name: %w", err)
+	}
+
+		_, err = s.repository.GetUserByEmail(email)
+	
+	existingUser := false
+	
+	if err == nil {
+    existingUser = true
+	} else if !errors.Is(err, ErrUserNotFound) {
+    return nil, "", err
 	}
 
 	token, err := generateToken()
@@ -296,16 +337,38 @@ func (s *Service) CreateInvitation(email string, role Role) (*Invitation, string
 		return nil, "", fmt.Errorf("generate invitation token: %w", err)
 	}
 
+	expiration := time.Now().Add(invitationDuration)
+
 	invitation := &Invitation{
 		ID:        uuid.NewString(),
 		Email:     email,
+		Name:      name,
 		Role:      role,
-		ExpiresAt: time.Now().Add(invitationDuration),
+		ProjectID:    projectID,
+		ExistingUser: existingUser,
+		ExpiresAt: expiration,
 	}
 
 	if err := s.repository.CreateInvitation(
 		invitation,
 		hashToken(token),
+	); err != nil {
+		return nil, "", err
+	}
+
+	inviteURL := fmt.Sprintf(
+		"%s/accept-invitation?token=%s",
+		// we'll pass APP_URL into the service shortly
+		strings.TrimRight(s.appURL, "/"),
+		token,
+	)
+
+	if err := s.emailSender.SendInvitation(
+		invitation.Email,
+		invitation.Name,
+		projectName,
+		inviteURL,
+		expiration,
 	); err != nil {
 		return nil, "", err
 	}
@@ -316,7 +379,7 @@ func (s *Service) CreateInvitation(email string, role Role) (*Invitation, string
 func (s *Service) AcceptInvitation(
 	token string,
 	password string,
-) (*User, error) {
+) (*InvitationAcceptance, error) {
 	if token == "" {
 		return nil, ErrInvitationNotFound
 	}
@@ -340,8 +403,40 @@ func (s *Service) AcceptInvitation(
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
-	return s.repository.AcceptInvitation(
+	user, session, sessionToken, err := s.repository.AcceptInvitation(
 		invitation,
 		passwordHash,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &InvitationAcceptance{
+		User:        user,
+		Session:     session,
+		SessionToken: sessionToken,
+		ProjectID:   invitation.ProjectID,
+	}, nil
+}
+
+func (s *Service) GetInvitationDetails(
+	token string,
+) (*Invitation, error) {
+	if token == "" {
+		return nil, ErrInvitationNotFound
+	}
+
+	invitation, err := s.repository.GetInvitationByTokenHash(
+		hashToken(token),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if time.Now().After(invitation.ExpiresAt) {
+		_ = s.repository.DeleteInvitation(invitation.ID)
+		return nil, errors.New("invitation has expired")
+	}
+
+	return invitation, nil
 }

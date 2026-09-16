@@ -149,3 +149,40 @@ func (r *Repository) IsMember(projectID, userID string) (bool, error) {
 
 	return exists, nil
 }
+
+func (r *Repository) Exists(projectID string) (bool, error) {
+	var exists bool
+
+	err := r.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM projects
+			WHERE id = ?
+		)
+	`, projectID).Scan(&exists)
+
+	if err != nil {
+		return false, fmt.Errorf("check project existence: %w", err)
+	}
+
+	return exists, nil
+}
+func (r *Repository) GetName(projectID string) (string, error) {
+	var name string
+
+	err := r.db.QueryRow(`
+		SELECT name
+		FROM projects
+		WHERE id = ?
+	`, projectID).Scan(&name)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", errors.New("project not found")
+		}
+
+		return "", fmt.Errorf("get project name: %w", err)
+	}
+
+	return name, nil
+}

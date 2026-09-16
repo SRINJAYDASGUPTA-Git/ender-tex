@@ -16,7 +16,9 @@ type Handler struct {
 }
 
 type createInvitationRequest struct {
-	Email string `json:"email"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	ProjectID string `json:"project_id"`
 }
 
 func NewHandler(service *Service) *Handler {
@@ -33,6 +35,13 @@ type loginRequest struct {
 type acceptInvitationRequest struct {
 	Token    string `json:"token"`
 	Password string `json:"password"`
+}
+
+type invitationDetailsResponse struct {
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	ExistingUser bool      `json:"existing_user"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }
 
 // Login authenticates a user and creates a session.
@@ -129,7 +138,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 //	@Description	Returns the user associated with the current session.
 //	@Tags			Authentication
 //	@Produce		json
-// 	@Security SessionCookie
+//	@Security		SessionCookie
 //	@Success		200	{object}	User
 //	@Failure		401	{string}	string	"Unauthorized"
 //	@Failure		405	{string}	string	"Method not allowed"
@@ -193,7 +202,9 @@ func (h *Handler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 
 	invitation, token, err := h.service.CreateInvitation(
 		req.Email,
+		req.Name,
 		RoleCollaborator,
+		req.ProjectID,
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -205,6 +216,7 @@ func (h *Handler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":         invitation.ID,
 		"email":      invitation.Email,
+		"name":       invitation.Name,
 		"role":       invitation.Role,
 		"expires_at": invitation.ExpiresAt,
 		"token":      token,
@@ -236,9 +248,10 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.AcceptInvitation(
+	acceptance, err := h.service.AcceptInvitation(
 		req.Token,
 		req.Password,
+		
 	)
 	if err != nil {
 		switch {
@@ -252,5 +265,69 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, user)
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    acceptance.SessionToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, // true in production HTTPS
+		SameSite: http.SameSiteLaxMode,
+		Expires:  acceptance.Session.ExpiresAt,
+	})
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"user":       acceptance.User,
+		"project_id": acceptance.ProjectID,
+	})
+}
+
+// GetInvitationDetails returns the details of a valid invitation token.
+//
+//	@Router			/auth/invitation-details [get]
+//	@Summary		Get invitation details
+//	@Description	Returns the details of a valid invitation token.
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			token	query		string	true	"Invitation token"
+//	@Success		200		{object}	invitationDetailsResponse
+//	@Failure		400		{string}	string	"Invalid invitation or request"
+//	@Failure		404		{string}	string	"Invitation not found"
+//	@Failure		410		{string}	string	"Invitation has expired"
+//	@Failure		500		{string}	string	"Internal server error"
+//	@Router			/auth/invitation [get]
+func (h *Handler) GetInvitationDetails(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	token := r.URL.Query().Get("token")
+
+	invitation, err := h.service.GetInvitationDetails(token)
+	if err != nil {
+		if errors.Is(err, ErrInvitationNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{
+				"error": "invitation not found",
+			})
+			return
+		}
+
+		if err.Error() == "invitation has expired" {
+			writeJSON(w, http.StatusGone, map[string]string{
+				"error": "invitation has expired",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "failed to get invitation",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, invitationDetailsResponse{
+		Email:     invitation.Email,
+		Name:      invitation.Name,
+		ExistingUser: invitation.ExistingUser,
+		ExpiresAt: invitation.ExpiresAt,
+	})
 }

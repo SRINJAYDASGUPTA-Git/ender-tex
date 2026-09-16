@@ -7,6 +7,14 @@ type Config struct {
 	Port       string
 	DataDir    string
 	LatexImage string
+
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+
+	AppURL string
 }
 
 func Load() Config {
@@ -31,10 +39,23 @@ func Load() Config {
 		latexImage = "texlive/texlive"
 	}
 
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		appURL = "http://localhost:3000"
+	}
+
 	return Config{
 		Host:       host,
 		Port:       port,
 		DataDir:    dataDir,
 		LatexImage: latexImage,
+
+		SMTPHost:     os.Getenv("SMTP_HOST"),
+		SMTPPort:     os.Getenv("SMTP_PORT"),
+		SMTPUsername: os.Getenv("SMTP_USERNAME"),
+		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:     os.Getenv("SMTP_FROM"),
+
+		AppURL: appURL,
 	}
 }

@@ -26,16 +26,24 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/joho/godotenv"
 
 	"paper-server/internal/auth"
 	"paper-server/internal/compiler"
 	"paper-server/internal/config"
 	"paper-server/internal/database"
+	"paper-server/internal/email"
 	"paper-server/internal/project"
+	
 	"path/filepath"
 )
 
 func main() {
+
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
 	cfg := config.Load()
 
 	db, err := database.Open()
@@ -47,9 +55,21 @@ func main() {
 	if err := database.Migrate(db); err != nil {
 		log.Fatalf("migration: %v", err)
 	}
+	projectRepository := project.NewRepository(db)
 
+	emailService, err := email.NewSMTPService(
+		cfg.SMTPHost,
+		cfg.SMTPPort,
+		cfg.SMTPUsername,
+		cfg.SMTPPassword,
+		cfg.SMTPFrom,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	
 	authRepository := auth.NewRepository(db)
-	authService := auth.NewService(authRepository)
+	authService := auth.NewService(authRepository, projectRepository, emailService, cfg.AppURL)
 
 	if len(os.Args) > 1 && os.Args[1] == "--create-admin" {
 		if err := createAdmin(authService); err != nil {
@@ -61,28 +81,26 @@ func main() {
 	authHandler := auth.NewHandler(authService)
 
 	mux := http.NewServeMux()
-	
+
 	swaggerSpec, err := os.ReadFile(filepath.Join("docs", "swagger.json"))
 	if err != nil {
-    log.Fatalf("swagger spec: %v", err)
+		log.Fatalf("swagger spec: %v", err)
 	}
-	
+
 	mux.HandleFunc("/swagger/openapi.json", func(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    _, _ = w.Write(swaggerSpec)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(swaggerSpec)
 	})
-	
+
 	mux.Handle(
-    "/swagger/",
-    httpSwagger.Handler(
-        httpSwagger.URL("/swagger/openapi.json"),
-    ),
+		"/swagger/",
+		httpSwagger.Handler(
+			httpSwagger.URL("/swagger/openapi.json"),
+		),
 	)
 
 	auth.RegisterRoutes(mux, authHandler)
-
-	projectRepository := project.NewRepository(db)
 
 	projectStorage, err := project.NewStorage(
 		filepath.Join(cfg.DataDir, "projects"),
@@ -150,6 +168,13 @@ func createAdmin(service *auth.Service) error {
 
 	email = strings.TrimSpace(email)
 
+	fmt.Print("Name: ")
+	name, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+
 	fmt.Print("Password: ")
 	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println()
@@ -173,7 +198,7 @@ func createAdmin(service *auth.Service) error {
 		return errors.New("passwords do not match")
 	}
 
-	user, err := service.CreateAdmin(email, password)
+	user, err := service.CreateAdmin(email, name, password)
 	if err != nil {
 		return err
 	}
