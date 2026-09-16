@@ -4,9 +4,22 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 var ErrProjectNotFound = errors.New("project not found")
+
+type Role string
+type Invitation struct {
+    ID           string    `json:"id"`
+    Name         string    `json:"name"`
+    Email        string    `json:"email"`
+    Role         Role      `json:"role"`
+    ProjectID    string    `json:"project_id"`
+    ExistingUser bool      `json:"existing_user"`
+    ExpiresAt    time.Time `json:"expires_at"`
+    CreatedAt    time.Time `json:"created_at"`
+}
 
 type Repository struct {
 	db *sql.DB
@@ -185,4 +198,202 @@ func (r *Repository) GetName(projectID string) (string, error) {
 	}
 
 	return name, nil
+}
+
+func (r *Repository) UpdateProjectName(id string, name string) error {
+    result, err := r.db.Exec(`
+        UPDATE projects
+        SET name = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    `, name, id)
+
+    if err != nil {
+        return fmt.Errorf("update project name: %w", err)
+    }
+
+    rows, err := result.RowsAffected()
+    if err != nil {
+        return fmt.Errorf("check project update: %w", err)
+    }
+
+    if rows == 0 {
+        return ErrProjectNotFound
+    }
+
+    return nil
+}
+
+func (r *Repository) DeleteProject(id string) error {
+    result, err := r.db.Exec(`
+        DELETE FROM projects
+        WHERE id = ?
+    `, id)
+
+    if err != nil {
+        return fmt.Errorf("delete project: %w", err)
+    }
+
+    rows, err := result.RowsAffected()
+    if err != nil {
+        return fmt.Errorf("check project deletion: %w", err)
+    }
+
+    if rows == 0 {
+        return ErrProjectNotFound
+    }
+
+    return nil
+}
+
+func (r *Repository) ListMembers(projectID string) ([]*ProjectMembership, error) {
+	rows, err := r.db.Query(`
+		SELECT
+			pm.id,
+			pm.project_id,
+			pm.user_id,
+			pm.permission,
+			pm.created_at
+		FROM project_memberships pm
+		WHERE pm.project_id = ?
+		ORDER BY pm.created_at ASC
+	`, projectID)
+
+	if err != nil {
+		return nil, fmt.Errorf("list project members: %w", err)
+	}
+	defer rows.Close()
+
+	var members []*ProjectMembership
+
+	for rows.Next() {
+		member := &ProjectMembership{}
+
+		if err := rows.Scan(
+			&member.ID,
+			&member.ProjectID,
+			&member.UserID,
+			&member.Permission,
+			&member.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan project member: %w", err)
+		}
+
+		members = append(members, member)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate project members: %w", err)
+	}
+
+	return members, nil
+}
+
+func (r *Repository) UpdateMemberPermission(
+	projectID string,
+	userID string,
+	permission string,
+) error {
+	result, err := r.db.Exec(`
+		UPDATE project_memberships
+		SET permission = ?
+		WHERE project_id = ?
+		  AND user_id = ?
+	`, permission, projectID, userID)
+
+	if err != nil {
+		return fmt.Errorf("update member permission: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check member update: %w", err)
+	}
+
+	if rows == 0 {
+		return errors.New("project member not found")
+	}
+
+	return nil
+}
+
+func (r *Repository) RemoveMember(
+	projectID string,
+	userID string,
+) error {
+	result, err := r.db.Exec(`
+		DELETE FROM project_memberships
+		WHERE project_id = ?
+		  AND user_id = ?
+	`, projectID, userID)
+
+	if err != nil {
+		return fmt.Errorf("remove project member: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check member removal: %w", err)
+	}
+
+	if rows == 0 {
+		return errors.New("project member not found")
+	}
+
+	return nil
+}
+
+func (r *Repository) ListInvitationsByProject(
+	projectID string,
+) ([]*Invitation, error) {
+	rows, err := r.db.Query(`
+		SELECT
+			id,
+			name,
+			email,
+			role,
+			project_id,
+			existing_user,
+			expires_at,
+			created_at
+		FROM invitations
+		WHERE project_id = ?
+		  AND expires_at > CURRENT_TIMESTAMP
+		ORDER BY created_at DESC
+	`, projectID)
+
+	if err != nil {
+		return nil, fmt.Errorf("list project invitations: %w", err)
+	}
+	defer rows.Close()
+
+	var invitations []*Invitation
+
+	for rows.Next() {
+		invitation := &Invitation{}
+
+		var existingUser int
+
+		if err := rows.Scan(
+			&invitation.ID,
+			&invitation.Name,
+			&invitation.Email,
+			&invitation.Role,
+			&invitation.ProjectID,
+			&existingUser,
+			&invitation.ExpiresAt,
+			&invitation.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan invitation: %w", err)
+		}
+
+		invitation.ExistingUser = existingUser != 0
+
+		invitations = append(invitations, invitation)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate project invitations: %w", err)
+	}
+
+	return invitations, nil
 }

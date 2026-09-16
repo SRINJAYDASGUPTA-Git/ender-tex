@@ -47,6 +47,8 @@ definitions:
     properties:
       email:
         type: string
+      existing_user:
+        type: boolean
       expires_at:
         type: string
       name:
@@ -77,6 +79,25 @@ definitions:
       mainFile:
         type: string
       name:
+        type: string
+    type: object
+  project.Invitation:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      existing_user:
+        type: boolean
+      expires_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      project_id:
+        type: string
+      role:
         type: string
     type: object
   project.Project:
@@ -113,6 +134,11 @@ definitions:
       projectId:
         type: string
       userId:
+        type: string
+    type: object
+  project.RenameProjectRequest:
+    properties:
+      name:
         type: string
     type: object
 info:
@@ -152,6 +178,167 @@ paths:
       summary: Create invitation
       tags:
       - Administration
+  /api/projects/{projectId}/invitations:
+    get:
+      description: Returns a list of all invitations for the project
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/project.Invitation'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List all invitations for a project
+      tags:
+      - Invitations
+  /api/projects/{projectId}/members:
+    get:
+      description: Returns a list of all members of the project
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/project.ProjectMembership'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List all members of a project
+      tags:
+      - Members
+  /api/projects/{projectId}/members/{userId}:
+    delete:
+      description: Removes a member from the project
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: Member ID
+        in: path
+        name: memberId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Remove a member from a project
+      tags:
+      - Members
+    patch:
+      description: Updates the permission of a member in the project
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: Member ID
+        in: path
+        name: memberId
+        required: true
+        type: string
+      - description: Permission
+        in: body
+        name: permission
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/project.ProjectMembership'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update a member's permission in a project
+      tags:
+      - Members
   /auth/accept-invitation:
     post:
       consumes:
@@ -184,6 +371,43 @@ paths:
       tags:
       - Authentication
   /auth/invitation:
+    get:
+      consumes:
+      - application/json
+      description: Returns the details of a valid invitation token.
+      parameters:
+      - description: Invitation token
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.invitationDetailsResponse'
+        "400":
+          description: Invalid invitation or request
+          schema:
+            type: string
+        "404":
+          description: Invitation not found
+          schema:
+            type: string
+        "410":
+          description: Invitation has expired
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Get invitation details
+      tags:
+      - Authentication
+  /auth/invitation-details:
     get:
       consumes:
       - application/json
@@ -359,6 +583,36 @@ paths:
       tags:
       - Projects
   /projects/{projectId}:
+    delete:
+      description: Deletes a project and all of its stored files.
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: Project not found
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Delete project
+      tags:
+      - Projects
     get:
       description: Returns project metadata and membership information for a project.
       parameters:
@@ -397,6 +651,50 @@ paths:
               type: string
             type: object
       summary: Get project
+      tags:
+      - Projects
+    patch:
+      consumes:
+      - application/json
+      description: Updates the name of a project owned by the authenticated user.
+      parameters:
+      - description: Project ID
+        in: path
+        name: projectId
+        required: true
+        type: string
+      - description: New project name
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/project.RenameProjectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/project.Project'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: Project not found
+          schema:
+            type: string
+      summary: Rename project
       tags:
       - Projects
   /projects/{projectId}/compile:

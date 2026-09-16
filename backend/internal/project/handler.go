@@ -19,6 +19,14 @@ type Handler struct {
 	compiler *compiler.Service
 }
 
+type RenameProjectRequest struct {
+	Name string `json:"name"`
+}
+
+type MemberUpdateRequest struct {
+	Permission string `json:"permission"`
+}
+
 func NewHandler(
 	service *Service,
 	storage *Storage,
@@ -123,7 +131,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := strings.TrimPrefix(r.URL.Path, "/api/projects/")
+	id := r.PathValue("projectId")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"message": "Project ID is required.",
@@ -470,12 +478,305 @@ func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, pdfPath)
 }
 
+// RenameProject renames a project owned by the authenticated user.
+//
+//	@Summary		Rename project
+//	@Description	Updates the name of a project owned by the authenticated user.
+//	@Tags			Projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			projectId	path		string					true	"Project ID"
+//	@Param			request		body		RenameProjectRequest	true	"New project name"
+//	@Success		200			{object}	Project
+//	@Failure		400			{object}	map[string]string
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{string}	string	"Forbidden"
+//	@Failure		404			{string}	string	"Project not found"
+//	@Router			/projects/{projectId} [patch]
+func (h *Handler) RenameProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := r.PathValue("projectId")
+	if projectID == "" {
+		http.Error(w, "project id is required", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req RenameProjectRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	project, err := h.service.RenameProject(
+		projectID,
+		userID,
+		req.Name,
+	)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrProjectNotFound):
+			http.Error(w, "project not found", http.StatusNotFound)
+
+		case errors.Is(err, ErrProjectForbidden):
+			http.Error(w, "forbidden", http.StatusForbidden)
+
+		default:
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, project)
+}
+
+// DeleteProject deletes a project owned by the authenticated user.
+//
+//	@Summary		Delete project
+//	@Description	Deletes a project and all of its stored files.
+//	@Tags			Projects
+//	@Param			projectId	path	string	true	"Project ID"
+//	@Success		204
+//	@Failure		401	{string}	string	"Unauthorized"
+//	@Failure		403	{string}	string	"Forbidden"
+//	@Failure		404	{string}	string	"Project not found"
+//	@Failure		500	{string}	string	"Internal server error"
+//	@Router			/projects/{projectId} [delete]
+func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	projectID := r.PathValue("projectId")
+	if projectID == "" {
+		http.Error(w, "project id is required", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.service.DeleteProject(projectID, userID); err != nil {
+		switch {
+		case errors.Is(err, ErrProjectNotFound):
+			http.Error(w, "project not found", http.StatusNotFound)
+
+		case errors.Is(err, ErrProjectForbidden):
+			http.Error(w, "forbidden", http.StatusForbidden)
+
+		default:
+			http.Error(w, "failed to delete project", http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListMembers lists all members of a project
+//
+//	@Summary		List all members of a project
+//	@Description	Returns a list of all members of the project
+//	@Tags			Members
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Success		200			{array}		ProjectMembership
+//	@Failure		400			{object}	map[string]string
+//	@Failure		401			{object}	map[string]string
+//	@Failure		500			{object}	map[string]string
+//	@Router			/api/projects/{projectId}/members [get]
+func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid project path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForOwner(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	members, err := h.service.repository.ListMembers(projectID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, members)
+}
+
+// ListInvitations lists all invitations for a project
+//
+//	@Summary		List all invitations for a project
+//	@Description	Returns a list of all invitations for the project
+//	@Tags			Invitations
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Success		200			{array}		Invitation
+//	@Failure		400			{object}	map[string]string
+//	@Failure		401			{object}	map[string]string
+//	@Failure		500			{object}	map[string]string
+//	@Router			/api/projects/{projectId}/invitations [get]
+func (h *Handler) ListInvitations(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid project path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForOwner(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	invitations, err := h.service.ListInvitations(projectID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, invitations)
+}
+
+// UpdateMember updates a member's permission in a project
+//
+//	@Summary		Update a member's permission in a project
+//	@Description	Updates the permission of a member in the project
+//	@Tags			Members
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Param			memberId	path		string	true	"Member ID"
+//	@Param			permission	body		string	true	"Permission"
+//	@Success		200			{object}	ProjectMembership
+//	@Failure		400			{object}	map[string]string
+//	@Failure		401			{object}	map[string]string
+//	@Failure		500			{object}	map[string]string
+//	@Router			/api/projects/{projectId}/members/{userId} [patch]
+func (h *Handler) UpdateMember(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+    http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+    return
+	}
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid project path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForOwner(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	var memberUpdateReq MemberUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&memberUpdateReq); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if memberUpdateReq.Permission != "EDITOR" && memberUpdateReq.Permission != "VIEWER" {
+		http.Error(w, "invalid permission", http.StatusBadRequest)
+		return
+	}
+
+	memberID := r.PathValue("userId")
+	if err := h.service.UpdateMember(projectID, memberID, memberUpdateReq.Permission); err != nil {
+		http.Error(w, "failed to update member", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, nil)
+}
+
+// RemoveMember removes a member from a project
+//
+//	@Summary		Remove a member from a project
+//	@Description	Removes a member from the project
+//	@Tags			Members
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Param			memberId	path		string	true	"Member ID"
+//	@Success		200			{object}	map[string]string
+//	@Failure		400			{object}	map[string]string
+//	@Failure		401			{object}	map[string]string
+//	@Failure		500			{object}	map[string]string
+//	@Router			/api/projects/{projectId}/members/{userId} [delete]
+func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid project path", http.StatusBadRequest)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if _, err := h.service.GetForOwner(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	memberID := r.PathValue("userId")
+
+	if err := h.service.RemoveMember(projectID, memberID); err != nil {
+		http.Error(w, "failed to remove member", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, nil)
+}
+
 // ==============================
 // CRUD Files
 // ==============================
 
 func (h *Handler) createFile(
-	w http.ResponseWriter,
+	w http.ResponseWriter,	
 	projectID string,
 	filePath string,
 ) {
