@@ -425,3 +425,30 @@ func (r *Repository) ListInvitationsByProject(
 
 	return invitations, nil
 }
+
+func (r *Repository) GetMemberPermission(
+	projectID string,
+	userID string,
+) (string, error) {
+	var permission string
+
+	err := r.db.QueryRow(`
+		SELECT permission
+		FROM project_memberships
+		WHERE project_id = ?
+		  AND user_id = ?
+	`, projectID, userID).Scan(&permission)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrProjectAccessDenied
+		}
+
+		return "", fmt.Errorf(
+			"get member permission: %w",
+			err,
+		)
+	}
+
+	return permission, nil
+}

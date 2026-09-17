@@ -34,7 +34,7 @@ import (
 	"paper-server/internal/database"
 	"paper-server/internal/email"
 	"paper-server/internal/project"
-	
+
 	"path/filepath"
 )
 
@@ -67,7 +67,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+
 	authRepository := auth.NewRepository(db)
 	authService := auth.NewService(authRepository, projectRepository, emailService, cfg.AppURL)
 
@@ -127,6 +127,11 @@ func main() {
 	projectHandler := project.NewHandler(projectService, projectStorage, compilerService)
 
 	project.RegisterRoutes(
+		mux,
+		projectHandler,
+		authHandler,
+	)
+	project.RegisterUploadRoute(
 		mux,
 		projectHandler,
 		authHandler,

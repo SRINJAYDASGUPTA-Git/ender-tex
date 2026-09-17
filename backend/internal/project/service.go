@@ -14,6 +14,7 @@ type Service struct {
 }
 
 var ErrProjectAccessDenied = errors.New("project access denied")
+
 // var ErrProjectNotFound = errors.New("project not found")
 var ErrProjectForbidden = errors.New("project forbidden")
 
@@ -120,60 +121,60 @@ func (s *Service) GetForUser(projectID, userID string) (*Project, error) {
 }
 
 func (s *Service) RenameProject(
-    projectID string,
-    userID string,
-    name string,
+	projectID string,
+	userID string,
+	name string,
 ) (*Project, error) {
-    project, err := s.repository.GetByID(projectID)
-    if err != nil {
-        return nil, err
-    }
+	project, err := s.repository.GetByID(projectID)
+	if err != nil {
+		return nil, err
+	}
 
-    if project.OwnerID != userID {
-        return nil, ErrProjectForbidden
-    }
+	if project.OwnerID != userID {
+		return nil, ErrProjectForbidden
+	}
 
-    name = strings.TrimSpace(name)
+	name = strings.TrimSpace(name)
 
-    if name == "" {
-        return nil, errors.New("project name cannot be empty")
-    }
+	if name == "" {
+		return nil, errors.New("project name cannot be empty")
+	}
 
-    if len(name) > 200 {
-        return nil, errors.New("project name is too long")
-    }
+	if len(name) > 200 {
+		return nil, errors.New("project name is too long")
+	}
 
-    if err := s.repository.UpdateProjectName(projectID, name); err != nil {
-        return nil, err
-    }
+	if err := s.repository.UpdateProjectName(projectID, name); err != nil {
+		return nil, err
+	}
 
-    project.Name = name
+	project.Name = name
 
-    return project, nil
+	return project, nil
 }
 
 func (s *Service) DeleteProject(
-    projectID string,
-    userID string,
+	projectID string,
+	userID string,
 ) error {
-    project, err := s.repository.GetByID(projectID)
-    if err != nil {
-        return err
-    }
+	project, err := s.repository.GetByID(projectID)
+	if err != nil {
+		return err
+	}
 
-    if project.OwnerID != userID {
-        return ErrProjectForbidden
-    }
+	if project.OwnerID != userID {
+		return ErrProjectForbidden
+	}
 
-    if err := s.storage.DeleteProject(projectID); err != nil {
-        return fmt.Errorf("delete project files: %w", err)
-    }
+	if err := s.storage.DeleteProject(projectID); err != nil {
+		return fmt.Errorf("delete project files: %w", err)
+	}
 
-    if err := s.repository.DeleteProject(projectID); err != nil {
-        return fmt.Errorf("delete project metadata: %w", err)
-    }
+	if err := s.repository.DeleteProject(projectID); err != nil {
+		return fmt.Errorf("delete project metadata: %w", err)
+	}
 
-    return nil
+	return nil
 }
 
 func (s *Service) GetForOwner(
@@ -193,34 +194,34 @@ func (s *Service) GetForOwner(
 }
 
 func (s *Service) ListMembers(projectID string) ([]*ProjectMembership, error) {
-    return s.repository.ListMembers(projectID)
+	return s.repository.ListMembers(projectID)
 }
 
 func (s *Service) ListInvitations(projectID string) ([]*Invitation, error) {
-    return s.repository.ListInvitationsByProject(projectID)
+	return s.repository.ListInvitationsByProject(projectID)
 }
 
 func (s *Service) UpdateMember(
-    projectID string,
-    userID string,
-    permission string,
+	projectID string,
+	userID string,
+	permission string,
 ) error {
-    if permission != PermissionEditor && permission != PermissionViewer {
-        return errors.New("invalid permission")
-    }
+	if permission != PermissionEditor && permission != PermissionViewer {
+		return errors.New("invalid permission")
+	}
 
-    return s.repository.UpdateMemberPermission(
-        projectID,
-        userID,
-        permission,
-    )
+	return s.repository.UpdateMemberPermission(
+		projectID,
+		userID,
+		permission,
+	)
 }
 
 func (s *Service) RemoveMember(
-    projectID string,
-    userID string,
+	projectID string,
+	userID string,
 ) error {
-    return s.repository.RemoveMember(projectID, userID)
+	return s.repository.RemoveMember(projectID, userID)
 }
 
 func validEngine(engine string) bool {
@@ -267,4 +268,29 @@ func validateMainFile(path string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) CanEdit(
+	projectID string,
+	userID string,
+) (bool, error) {
+	project, err := s.repository.GetByID(projectID)
+	if err != nil {
+		return false, err
+	}
+
+	// Owner always has write access.
+	if project.OwnerID == userID {
+		return true, nil
+	}
+
+	permission, err := s.repository.GetMemberPermission(
+		projectID,
+		userID,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return permission == PermissionEditor, nil
 }
