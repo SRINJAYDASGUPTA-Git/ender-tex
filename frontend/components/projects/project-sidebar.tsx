@@ -1,7 +1,19 @@
 "use client";
 
-import {useEffect, useState} from "react";
-import {FilePlus, FolderPlus, RefreshCw} from "lucide-react";
+import React, {
+    useEffect,
+    useRef,
+    useState,
+} from "react";
+
+import {
+    FilePlus,
+    FolderPlus,
+    FolderUp,
+    RefreshCw,
+    Upload,
+} from "lucide-react";
+
 import {toast} from "sonner";
 
 import axios from "@/utils/axiosInstance";
@@ -18,6 +30,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 
@@ -27,37 +40,71 @@ interface ProjectSidebarProps {
     onFileSelect: (path: string) => void;
 }
 
+type ActionType =
+    | "create"
+    | "rename"
+    | "delete"
+    | null;
+
+type EntryType =
+    | "file"
+    | "directory"
+    | null;
+
+type UploadableFile = File & {
+    webkitRelativePath?: string;
+};
+
 export function ProjectSidebar({
                                    project,
                                    selectedPath,
                                    onFileSelect,
                                }: ProjectSidebarProps) {
-    const [files, setFiles] = useState<ProjectFileResponse>();
-    const [loading, setLoading] = useState(true);
-    const [actionType, setActionType] = useState<
-        "create" | "rename" | "delete" | null
-    >(null);
+    const [files, setFiles] =
+        useState<ProjectFileResponse>();
 
-    const [entryType, setEntryType] = useState<
-        "file" | "directory" | null
-    >(null);
+    const [loading, setLoading] =
+        useState(true);
 
-    const [entryPath, setEntryPath] = useState("");
-    const [entryName, setEntryName] = useState("");
-    const [creating, setCreating] = useState(false);
+    const [actionType, setActionType] =
+        useState<ActionType>(null);
+
+    const [entryType, setEntryType] =
+        useState<EntryType>(null);
+
+    const [entryPath, setEntryPath] =
+        useState("");
+
+    const [entryName, setEntryName] =
+        useState("");
+
+    const [creating, setCreating] =
+        useState(false);
+
+    const [uploading, setUploading] =
+        useState(false);
+
+    const fileInputRef =
+        useRef<HTMLInputElement>(null);
+
+    const folderInputRef =
+        useRef<HTMLInputElement>(null);
 
     const loadFiles = async () => {
         try {
             setLoading(true);
 
-            const response = await axios.get<ProjectFileResponse>(
-                `/projects/${project.id}/files`
-            );
+            const response =
+                await axios.get<ProjectFileResponse>(
+                    `/projects/${project.id}/files`
+                );
 
             setFiles(response.data);
         } catch (error) {
             console.error(error);
-            toast.error("Failed to load project files.");
+            toast.error(
+                "Failed to load project files."
+            );
         } finally {
             setLoading(false);
         }
@@ -66,6 +113,118 @@ export function ProjectSidebar({
     useEffect(() => {
         loadFiles();
     }, [project.id]);
+
+    /*
+     * Upload files.
+     *
+     * For normal file uploads:
+     *     paths = file.name
+     *
+     * For folder uploads:
+     *     paths = file.webkitRelativePath
+     */
+    const uploadFiles = async (
+        selectedFiles: File[],
+        preserveRelativePaths: boolean
+    ) => {
+        if (
+            selectedFiles.length === 0 ||
+            uploading
+        ) {
+            return;
+        }
+
+        try {
+            setUploading(true);
+
+            const formData = new FormData();
+
+            for (const file of selectedFiles) {
+                const uploadFile =
+                    file as UploadableFile;
+
+                const relativePath =
+                    preserveRelativePaths
+                        ? (
+                            uploadFile.webkitRelativePath ||
+                            uploadFile.name
+                        )
+                        : uploadFile.name;
+
+                formData.append(
+                    "files",
+                    file
+                );
+
+                formData.append(
+                    "paths",
+                    relativePath
+                );
+            }
+
+            await axios.post(
+                `/projects/${project.id}/upload`,
+                formData
+            );
+
+            toast.success(
+                selectedFiles.length === 1
+                    ? "File uploaded."
+                    : `${selectedFiles.length} files uploaded.`
+            );
+
+            await loadFiles();
+        } catch (error: any) {
+            console.error(error);
+
+            toast.error(
+                error?.response?.data?.message ??
+                "Failed to upload files."
+            );
+        } finally {
+            setUploading(false);
+
+            /*
+             * Reset both inputs so selecting the same
+             * file/folder again triggers onChange.
+             */
+            if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+            }
+
+            if (folderInputRef.current) {
+                folderInputRef.current.value = "";
+            }
+        }
+    };
+
+    const handleFileUpload = async (
+        event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+        const selectedFiles =
+            Array.from(
+                event.target.files ?? []
+            );
+
+        await uploadFiles(
+            selectedFiles,
+            false
+        );
+    };
+
+    const handleFolderUpload = async (
+        event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+        const selectedFiles =
+            Array.from(
+                event.target.files ?? []
+            );
+
+        await uploadFiles(
+            selectedFiles,
+            true
+        );
+    };
 
     const handleCreate = (
         type: "file" | "directory",
@@ -81,8 +240,13 @@ export function ProjectSidebar({
         type: "file" | "directory",
         path: string
     ) => {
-        if (type === "file" && path === project.mainFile) {
-            alert("The main file cannot be deleted.");
+        if (
+            type === "file" &&
+            path === project.mainFile
+        ) {
+            alert(
+                "The main file cannot be deleted."
+            );
             return;
         }
 
@@ -90,7 +254,9 @@ export function ProjectSidebar({
         setEntryType(type);
         setEntryPath(path);
 
-        const name = path.split("/").pop() ?? "";
+        const name =
+            path.split("/").pop() ?? "";
+
         setEntryName(name);
     };
 
@@ -99,22 +265,31 @@ export function ProjectSidebar({
         path: string
     ) => {
         // Never allow deleting the project's main file.
-        if (type === "file" && path === project.mainFile) {
-            alert("The main file cannot be deleted.");
+        if (
+            type === "file" &&
+            path === project.mainFile
+        ) {
+            alert(
+                "The main file cannot be deleted."
+            );
             return;
         }
 
-        // The backend already rejects non-empty directories,
-        // but prevent opening the confirmation dialog here too.
+        // Prevent deleting non-empty directories.
         if (type === "directory") {
-            const hasChildren = files?.files.some(
-                (file) =>
-                    file.path !== path &&
-                    file.path.startsWith(`${path}/`)
-            );
+            const hasChildren =
+                files?.files.some(
+                    (file) =>
+                        file.path !== path &&
+                        file.path.startsWith(
+                            `${path}/`
+                        )
+                );
 
             if (hasChildren) {
-                alert("Folder is not empty.");
+                alert(
+                    "Folder is not empty."
+                );
                 return;
             }
         }
@@ -123,8 +298,6 @@ export function ProjectSidebar({
         setEntryType(type);
         setEntryPath(path);
         setEntryName("");
-
-        console.log("Deleting", path);
     };
 
     const createEntry = async () => {
@@ -139,7 +312,8 @@ export function ProjectSidebar({
         try {
             setCreating(true);
 
-            const name = entryName.trim();
+            const name =
+                entryName.trim();
 
             const fullPath = entryPath
                 ? `${entryPath}/${name}`
@@ -153,7 +327,7 @@ export function ProjectSidebar({
             await axios.post(
                 endpoint,
                 entryType === "file"
-                    ? { content: "" }
+                    ? {content: ""}
                     : undefined
             );
 
@@ -198,14 +372,16 @@ export function ProjectSidebar({
         try {
             setCreating(true);
 
-            const newName = entryName.trim();
+            const newName =
+                entryName.trim();
 
-            const parentPath = entryPath.includes("/")
-                ? entryPath.substring(
-                    0,
-                    entryPath.lastIndexOf("/")
-                )
-                : "";
+            const parentPath =
+                entryPath.includes("/")
+                    ? entryPath.substring(
+                        0,
+                        entryPath.lastIndexOf("/")
+                    )
+                    : "";
 
             const newPath = parentPath
                 ? `${parentPath}/${newName}`
@@ -216,9 +392,12 @@ export function ProjectSidebar({
                     ? `/projects/${project.id}/files/${entryPath}`
                     : `/projects/${project.id}/folders/${entryPath}`;
 
-            await axios.patch(endpoint, {
-                newPath,
-            });
+            await axios.patch(
+                endpoint,
+                {
+                    newPath,
+                }
+            );
 
             toast.success(
                 entryType === "file"
@@ -226,7 +405,8 @@ export function ProjectSidebar({
                     : "Folder renamed."
             );
 
-            const oldPath = entryPath;
+            const oldPath =
+                entryPath;
 
             setActionType(null);
             setEntryType(null);
@@ -235,7 +415,9 @@ export function ProjectSidebar({
 
             await loadFiles();
 
-            if (selectedPath === oldPath) {
+            if (
+                selectedPath === oldPath
+            ) {
                 onFileSelect(newPath);
             }
         } catch (error: any) {
@@ -262,7 +444,8 @@ export function ProjectSidebar({
         try {
             setCreating(true);
 
-            const deletedPath = entryPath;
+            const deletedPath =
+                entryPath;
 
             const endpoint =
                 entryType === "file"
@@ -284,7 +467,9 @@ export function ProjectSidebar({
 
             await loadFiles();
 
-            if (selectedPath === deletedPath) {
+            if (
+                selectedPath === deletedPath
+            ) {
                 onFileSelect("");
             }
         } catch (error: any) {
@@ -299,21 +484,47 @@ export function ProjectSidebar({
         }
     };
 
-    console.log(files);
     return (
         <aside className="flex w-64 shrink-0 flex-col border-r">
+
+            {/* Hidden upload inputs */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileUpload}
+            />
+
+            <input
+                ref={folderInputRef}
+                type="file"
+                multiple
+                // @ts-expect-error webkitdirectory is supported by browsers
+                webkitdirectory=""
+                className="hidden"
+                onChange={handleFolderUpload}
+            />
+
             <div className="flex h-10 items-center justify-between border-b px-3">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Files
                 </span>
 
                 <div className="flex items-center gap-0.5">
+
                     <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
                         title="New file"
-                        onClick={() => handleCreate("file", "")}
+                        onClick={() =>
+                            handleCreate(
+                                "file",
+                                ""
+                            )
+                        }
+                        disabled={uploading}
                     >
                         <FilePlus className="h-3.5 w-3.5" />
                     </Button>
@@ -323,7 +534,13 @@ export function ProjectSidebar({
                         size="icon"
                         className="h-7 w-7"
                         title="New folder"
-                        onClick={() => handleCreate("directory", "")}
+                        onClick={() =>
+                            handleCreate(
+                                "directory",
+                                ""
+                            )
+                        }
+                        disabled={uploading}
                     >
                         <FolderPlus className="h-3.5 w-3.5" />
                     </Button>
@@ -332,20 +549,51 @@ export function ProjectSidebar({
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
+                        title="Upload files"
+                        onClick={() =>
+                            fileInputRef.current?.click()
+                        }
+                        disabled={uploading}
+                    >
+                        <Upload className="h-3.5 w-3.5" />
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Upload folder"
+                        onClick={() =>
+                            folderInputRef.current?.click()
+                        }
+                        disabled={uploading}
+                    >
+                        <FolderUp className="h-3.5 w-3.5" />
+                    </Button>
+
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
                         title="Refresh"
                         onClick={loadFiles}
+                        disabled={uploading}
                     >
                         <RefreshCw
                             className={`h-3.5 w-3.5 ${
-                                loading ? "animate-spin" : ""
+                                loading
+                                    ? "animate-spin"
+                                    : ""
                             }`}
                         />
                     </Button>
+
                 </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
-                {loading && files?.files.length === 0 ? (
+                {loading &&
+                files?.files.length === 0 ? (
                     <div className="px-2 py-3 text-xs text-muted-foreground">
                         Loading files...
                     </div>
@@ -355,20 +603,37 @@ export function ProjectSidebar({
                     </div>
                 ) : (
                     <FileTree
-                        entries={files?.files || []}
-                        selectedPath={selectedPath}
-                        onFileSelect={onFileSelect}
-                        onCreate={handleCreate}
-                        onDelete={handleDelete}
-                        onRename={handleRename}
+                        entries={
+                            files?.files || []
+                        }
+                        selectedPath={
+                            selectedPath
+                        }
+                        onFileSelect={
+                            onFileSelect
+                        }
+                        onCreate={
+                            handleCreate
+                        }
+                        onDelete={
+                            handleDelete
+                        }
+                        onRename={
+                            handleRename
+                        }
                     />
                 )}
             </div>
 
             <Dialog
-                open={actionType !== null}
+                open={
+                    actionType !== null
+                }
                 onOpenChange={(open) => {
-                    if (!open && !creating) {
+                    if (
+                        !open &&
+                        !creating
+                    ) {
                         setActionType(null);
                         setEntryType(null);
                         setEntryPath("");
@@ -384,18 +649,23 @@ export function ProjectSidebar({
                         <>
                             <DialogHeader>
                                 <DialogTitle>
-                                    {actionType === "create"
-                                        ? entryType === "file"
+                                    {actionType ===
+                                    "create"
+                                        ? entryType ===
+                                        "file"
                                             ? "Create file"
                                             : "Create folder"
-                                        : entryType === "file"
+                                        : entryType ===
+                                        "file"
                                             ? "Rename file"
                                             : "Rename folder"}
                                 </DialogTitle>
 
                                 <DialogDescription>
-                                    {actionType === "create"
-                                        ? entryType === "file"
+                                    {actionType ===
+                                    "create"
+                                        ? entryType ===
+                                        "file"
                                             ? "Create a new file in the project."
                                             : "Create a new folder in the project."
                                         : "Enter a new name for this entry."}
@@ -411,20 +681,35 @@ export function ProjectSidebar({
                                     id="entry-name"
                                     autoFocus
                                     value={entryName}
-                                    onChange={(event) =>
-                                        setEntryName(event.target.value)
+                                    onChange={(
+                                        event
+                                    ) =>
+                                        setEntryName(
+                                            event.target.value
+                                        )
                                     }
                                     placeholder={
-                                        entryType === "file"
+                                        entryType ===
+                                        "file"
                                             ? "section.tex"
                                             : "sections"
                                     }
-                                    disabled={creating}
-                                    onKeyDown={(event) => {
-                                        if (event.key === "Enter") {
+                                    disabled={
+                                        creating
+                                    }
+                                    onKeyDown={(
+                                        event
+                                    ) => {
+                                        if (
+                                            event.key ===
+                                            "Enter"
+                                        ) {
                                             event.preventDefault();
 
-                                            if (actionType === "create") {
+                                            if (
+                                                actionType ===
+                                                "create"
+                                            ) {
                                                 createEntry();
                                             } else {
                                                 renameEntry();
@@ -443,14 +728,17 @@ export function ProjectSidebar({
                                         setEntryPath("");
                                         setEntryName("");
                                     }}
-                                    disabled={creating}
+                                    disabled={
+                                        creating
+                                    }
                                 >
                                     Cancel
                                 </Button>
 
                                 <Button
                                     onClick={
-                                        actionType === "create"
+                                        actionType ===
+                                        "create"
                                             ? createEntry
                                             : renameEntry
                                     }
@@ -460,10 +748,12 @@ export function ProjectSidebar({
                                     }
                                 >
                                     {creating
-                                        ? actionType === "create"
+                                        ? actionType ===
+                                        "create"
                                             ? "Creating..."
                                             : "Renaming..."
-                                        : actionType === "create"
+                                        : actionType ===
+                                        "create"
                                             ? "Create"
                                             : "Rename"}
                                 </Button>
@@ -477,7 +767,8 @@ export function ProjectSidebar({
                             <DialogHeader>
                                 <DialogTitle>
                                     Delete{" "}
-                                    {entryType === "file"
+                                    {entryType ===
+                                    "file"
                                         ? "file"
                                         : "folder"}
                                     ?
@@ -486,16 +777,22 @@ export function ProjectSidebar({
                                 <DialogDescription>
                                     Are you sure you want to delete{" "}
                                     <span className="font-medium text-foreground">
-                            {entryPath.split("/").pop()}
-                        </span>
+                                        {
+                                            entryPath
+                                                .split("/")
+                                                .pop()
+                                        }
+                                    </span>
                                     ?
-                                    {entryType === "directory" && (
-                                        <>
-                                            {" "}
-                                            The folder must be empty.
-                                        </>
-                                    )}
-                                    {" "}This action cannot be undone.
+                                    {entryType ===
+                                        "directory" && (
+                                            <>
+                                                {" "}
+                                                The folder must be empty.
+                                            </>
+                                        )}
+                                    {" "}
+                                    This action cannot be undone.
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -507,15 +804,21 @@ export function ProjectSidebar({
                                         setEntryType(null);
                                         setEntryPath("");
                                     }}
-                                    disabled={creating}
+                                    disabled={
+                                        creating
+                                    }
                                 >
                                     Cancel
                                 </Button>
 
                                 <Button
                                     variant="destructive"
-                                    onClick={deleteEntry}
-                                    disabled={creating}
+                                    onClick={
+                                        deleteEntry
+                                    }
+                                    disabled={
+                                        creating
+                                    }
                                 >
                                     {creating
                                         ? "Deleting..."
