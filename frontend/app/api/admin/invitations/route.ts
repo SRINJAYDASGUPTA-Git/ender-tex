@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-    process.env.BACKEND_URL ?? "http://localhost:8080";
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const cookie = request.headers.get("cookie");
 
-        const backendResponse = await fetch(
+        const response = await fetch(
             `${BACKEND_URL}/api/admin/invitations`,
             {
                 method: "POST",
@@ -17,20 +16,19 @@ export async function POST(request: NextRequest) {
                     ...(cookie ? { Cookie: cookie } : {}),
                 },
                 body: JSON.stringify(body),
-                cache: "no-store",
             }
         );
 
-        const data = await backendResponse.json();
+        const data = await response.json();
 
         return NextResponse.json(data, {
-            status: backendResponse.status,
+            status: response.status,
         });
     } catch (error) {
-        console.error("Create invitation proxy failed:", error);
+        console.error("Admin invitation proxy failed:", error);
 
         return NextResponse.json(
-            { message: "Authentication service unavailable." },
+            { message: "Admin service unavailable." },
             { status: 502 }
         );
     }

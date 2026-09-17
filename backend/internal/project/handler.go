@@ -687,8 +687,8 @@ func (h *Handler) ListInvitations(w http.ResponseWriter, r *http.Request) {
 //	@Router			/api/projects/{projectId}/members/{userId} [patch]
 func (h *Handler) UpdateMember(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
-    http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-    return
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 	projectID, ok := projectIDFromPath(r.URL.Path)
 	if !ok {
@@ -719,6 +719,10 @@ func (h *Handler) UpdateMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	memberID := r.PathValue("userId")
+	fmt.Println("memberID:", memberID)
+	fmt.Println("permission:", memberUpdateReq.Permission)
+	fmt.Println("projectID:", projectID)
+
 	if err := h.service.UpdateMember(projectID, memberID, memberUpdateReq.Permission); err != nil {
 		http.Error(w, "failed to update member", http.StatusInternalServerError)
 		return
@@ -776,7 +780,7 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 // ==============================
 
 func (h *Handler) createFile(
-	w http.ResponseWriter,	
+	w http.ResponseWriter,
 	projectID string,
 	filePath string,
 ) {

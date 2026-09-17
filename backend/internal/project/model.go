@@ -19,6 +19,8 @@ type ProjectMembership struct {
 	ID         string    `json:"id"`
 	ProjectID  string    `json:"projectId"`
 	UserID     string    `json:"userId"`
+	Name       string    `json:"name"`
+	Email      string    `json:"email"`
 	Permission string    `json:"permission"`
 	CreatedAt  time.Time `json:"createdAt"`
 }

@@ -5,20 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"uuid"
 )
 
 var ErrProjectNotFound = errors.New("project not found")
 
 type Role string
 type Invitation struct {
-    ID           string    `json:"id"`
-    Name         string    `json:"name"`
-    Email        string    `json:"email"`
-    Role         Role      `json:"role"`
-    ProjectID    string    `json:"project_id"`
-    ExistingUser bool      `json:"existing_user"`
-    ExpiresAt    time.Time `json:"expires_at"`
-    CreatedAt    time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	Role         Role      `json:"role"`
+	ProjectID    string    `json:"project_id"`
+	ExistingUser bool      `json:"existing_user"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Repository struct {
@@ -30,7 +31,14 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 func (r *Repository) Create(project *Project) error {
-	_, err := r.db.Exec(`
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
 		INSERT INTO projects (
 			id,
 			owner_id,
@@ -47,6 +55,21 @@ func (r *Repository) Create(project *Project) error {
 		project.MainFile,
 		project.Engine,
 		project.Bibliography,
+	)
+	membershipID := uuid.New()
+	_, err = tx.Exec(`
+		INSERT INTO project_memberships (
+			id,
+			user_id,
+			project_id,
+			role
+		)
+		VALUES (?, ?, ?, ?)
+	`,
+		membershipID,
+		project.OwnerID,
+		project.ID,
+		"EDITOR",
 	)
 
 	if err != nil {
@@ -201,48 +224,48 @@ func (r *Repository) GetName(projectID string) (string, error) {
 }
 
 func (r *Repository) UpdateProjectName(id string, name string) error {
-    result, err := r.db.Exec(`
+	result, err := r.db.Exec(`
         UPDATE projects
         SET name = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     `, name, id)
 
-    if err != nil {
-        return fmt.Errorf("update project name: %w", err)
-    }
+	if err != nil {
+		return fmt.Errorf("update project name: %w", err)
+	}
 
-    rows, err := result.RowsAffected()
-    if err != nil {
-        return fmt.Errorf("check project update: %w", err)
-    }
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check project update: %w", err)
+	}
 
-    if rows == 0 {
-        return ErrProjectNotFound
-    }
+	if rows == 0 {
+		return ErrProjectNotFound
+	}
 
-    return nil
+	return nil
 }
 
 func (r *Repository) DeleteProject(id string) error {
-    result, err := r.db.Exec(`
+	result, err := r.db.Exec(`
         DELETE FROM projects
         WHERE id = ?
     `, id)
 
-    if err != nil {
-        return fmt.Errorf("delete project: %w", err)
-    }
+	if err != nil {
+		return fmt.Errorf("delete project: %w", err)
+	}
 
-    rows, err := result.RowsAffected()
-    if err != nil {
-        return fmt.Errorf("check project deletion: %w", err)
-    }
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check project deletion: %w", err)
+	}
 
-    if rows == 0 {
-        return ErrProjectNotFound
-    }
+	if rows == 0 {
+		return ErrProjectNotFound
+	}
 
-    return nil
+	return nil
 }
 
 func (r *Repository) ListMembers(projectID string) ([]*ProjectMembership, error) {
@@ -252,8 +275,11 @@ func (r *Repository) ListMembers(projectID string) ([]*ProjectMembership, error)
 			pm.project_id,
 			pm.user_id,
 			pm.permission,
-			pm.created_at
+			pm.created_at,
+			user.name,
+			user.email
 		FROM project_memberships pm
+		JOIN users user ON pm.user_id = user.id
 		WHERE pm.project_id = ?
 		ORDER BY pm.created_at ASC
 	`, projectID)
@@ -274,6 +300,8 @@ func (r *Repository) ListMembers(projectID string) ([]*ProjectMembership, error)
 			&member.UserID,
 			&member.Permission,
 			&member.CreatedAt,
+			&member.Name,
+			&member.Email,
 		); err != nil {
 			return nil, fmt.Errorf("scan project member: %w", err)
 		}

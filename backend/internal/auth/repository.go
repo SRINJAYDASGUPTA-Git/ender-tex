@@ -319,11 +319,12 @@ func (r *Repository) AcceptNewUserInvitation(
 	}
 	
 	_, err = tx.Exec(`
-		INSERT OR IGNORE INTO project_memberships (user_id, project_id)
-		VALUES (?, ?)
+		INSERT OR IGNORE INTO project_memberships (user_id, project_id, id)
+		VALUES (?, ?, ?)
 	`,
 		user.ID,
 		invitation.ProjectID,
+		invitation.ID,
 	)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("create project membership: %w", err)
@@ -400,16 +401,17 @@ func (r *Repository) AcceptExistingUserInvitation(
 	if !strings.EqualFold(user.Email, invitation.Email) {
 		return nil, errors.New("invitation email does not match user")
 	}
-
 	_, err = tx.Exec(`
 		INSERT OR IGNORE INTO project_memberships (
 			user_id,
-			project_id
+			project_id,
+			id
 		)
-		VALUES (?, ?)
+		VALUES (?, ?, ?)
 	`,
 		user.ID,
 		invitation.ProjectID,
+		invitation.ID,
 	)
 
 	if err != nil {

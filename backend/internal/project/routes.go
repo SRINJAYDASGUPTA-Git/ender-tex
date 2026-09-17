@@ -31,24 +31,40 @@ func RegisterRoutes(
 	)
 
 	mux.Handle(
-    "/api/projects/{projectId}",
-    authHandler.RequireAuth(
-        http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            switch r.Method {
-            case http.MethodGet:
-                handler.Get(w, r)
-	
-            case http.MethodPatch:
-                handler.RenameProject(w, r)
-	
-            case http.MethodDelete:
-                handler.DeleteProject(w, r)
-	
-            default:
-                w.WriteHeader(http.StatusMethodNotAllowed)
-            }
-        }),
-    ),
+		"/api/projects/{projectId}",
+		authHandler.RequireAuth(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodGet:
+					handler.Get(w, r)
+
+				case http.MethodPatch:
+					handler.RenameProject(w, r)
+
+				case http.MethodDelete:
+					handler.DeleteProject(w, r)
+
+				default:
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
+			}),
+		),
+	)
+
+	mux.Handle(
+		"/api/projects/{projectId}/members/{userId}",
+		authHandler.RequireAdmin(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodPatch:
+					handler.UpdateMember(w, r)
+				case http.MethodDelete:
+					handler.RemoveMember(w, r)
+				default:
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				}
+			}),
+		),
 	)
 
 	mux.Handle(
@@ -56,30 +72,20 @@ func RegisterRoutes(
 		authHandler.RequireAuth(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
-					case strings.HasSuffix(r.URL.Path, "/members"):
-						switch r.Method {
-						case http.MethodGet:
-							handler.ListMembers(w, r)
-						default:
-							http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-						}
-					
-					case strings.HasSuffix(r.URL.Path, "/invitations"):
-						if r.Method == http.MethodGet {
-							handler.ListInvitations(w, r)
-						} else {
-							http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-						}
-					
-					case strings.Contains(r.URL.Path, "/members/"):
-						switch r.Method {
-						case http.MethodPatch:
-							handler.UpdateMember(w, r)
-						case http.MethodDelete:
-							handler.RemoveMember(w, r)
-						default:
-							http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-						}
+				case strings.HasSuffix(r.URL.Path, "/members"):
+					switch r.Method {
+					case http.MethodGet:
+						handler.ListMembers(w, r)
+					default:
+						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					}
+
+				case strings.HasSuffix(r.URL.Path, "/invitations"):
+					if r.Method == http.MethodGet {
+						handler.ListInvitations(w, r)
+					} else {
+						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					}
 				case strings.HasSuffix(r.URL.Path, "/compile"):
 					handler.Compile(w, r)
 				case strings.HasSuffix(r.URL.Path, "/pdf"):
