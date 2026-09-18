@@ -15,6 +15,8 @@ type Config struct {
 	SMTPFrom     string
 
 	AppURL string
+
+	CollabTokenSecret string
 }
 
 func Load() Config {
@@ -44,6 +46,12 @@ func Load() Config {
 		appURL = "http://localhost:3000"
 	}
 
+	collabTokenSecret := os.Getenv("COLLAB_TOKEN_SECRET")
+	
+	if collabTokenSecret == "" {
+    	collabTokenSecret = "development-only-change-this-secret"
+	}
+
 	return Config{
 		Host:       host,
 		Port:       port,
@@ -56,6 +64,7 @@ func Load() Config {
 		SMTPPassword: os.Getenv("SMTP_PASSWORD"),
 		SMTPFrom:     os.Getenv("SMTP_FROM"),
 
-		AppURL: appURL,
+		AppURL:            appURL,
+		CollabTokenSecret: collabTokenSecret,
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"paper-server/internal/auth"
+	"paper-server/internal/collaboration"
 	"paper-server/internal/compiler"
 	"paper-server/internal/config"
 	"paper-server/internal/database"
@@ -126,6 +127,20 @@ func main() {
 
 	projectHandler := project.NewHandler(projectService, projectStorage, compilerService)
 
+	collaborationServer, err := collaboration.NewServer(
+		cfg.AppURL,
+		cfg.CollabTokenSecret,
+		projectService,
+		projectStorage,
+	)
+	
+	if err != nil {
+		log.Fatalf(
+			"collaboration server: %v",
+			err,
+		)
+	}
+
 	project.RegisterRoutes(
 		mux,
 		projectHandler,
@@ -134,6 +149,12 @@ func main() {
 	project.RegisterUploadRoute(
 		mux,
 		projectHandler,
+		authHandler,
+	)
+
+	collaboration.RegisterRoutes(
+		mux,
+		collaborationServer,
 		authHandler,
 	)
 

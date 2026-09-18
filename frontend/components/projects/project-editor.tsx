@@ -187,6 +187,8 @@ export function ProjectEditor() {
                                     </div>
                                 ) : (
                                     <LatexEditor
+                                        projectId={params.id}
+                                        collaborative
                                         value={file.content}
                                         fileName={file.path}
                                         onCompile={compileProject}
@@ -200,6 +202,19 @@ export function ProjectEditor() {
                                             }));
 
                                             setFileDirty(true);
+                                        }}
+                                        onCollaborativeContentChange={(
+                                            content,
+                                            local,
+                                        ) => {
+                                            setFile((currentFile) => ({
+                                                ...currentFile,
+                                                content,
+                                            }));
+
+                                            if (local) {
+                                                setFileDirty(true);
+                                            }
                                         }}
                                     />
                                 )}
