@@ -1,0 +1,2 @@
+ALTER TABLE invitations
+ADD COLUMN existing_user INTEGER NOT NULL DEFAULT 0;

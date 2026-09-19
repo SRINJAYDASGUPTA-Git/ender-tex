@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
-	"log"
 
 	ycrdt "github.com/reearth/ygo/crdt"
 	yws "github.com/reearth/ygo/provider/websocket"
@@ -19,10 +19,10 @@ import (
 )
 
 type Server struct {
-	ygo          *yws.Server
-	tokens       *tokenService
-	projects     *project.Service
-	storage      *project.Storage
+	ygo      *yws.Server
+	tokens   *tokenService
+	projects *project.Service
+	storage  *project.Storage
 }
 
 func NewServer(
@@ -45,8 +45,12 @@ func NewServer(
 	ygoServer := yws.NewServer()
 
 	// Browser WebSocket connections originate from the Next.js app.
+	// Append the local development origin to the slice.
+	fmt.Println("appURL:", appURL)
 	ygoServer.AllowedOrigins = []string{
 		appURL,
+		"http://localhost:3000",
+		"http://192.168.0.152:3000",
 	}
 
 	ygoServer.MaxPeersPerRoom = 20
@@ -156,7 +160,6 @@ func (s *Server) Token(
 		},
 	)
 }
-
 
 func (s *Server) authorize(
 	r *http.Request,
