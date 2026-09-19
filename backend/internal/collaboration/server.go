@@ -51,6 +51,8 @@ func NewServer(
 		appURL,
 		"http://localhost:3000",
 		"http://192.168.0.152:3000",
+		"http://ender-tex-frontend:3000",
+		"https://ender-tex.srinjaydg.in",
 	}
 
 	ygoServer.MaxPeersPerRoom = 20
