@@ -20,6 +20,8 @@ RUN apk add --no-cache docker-cli tzdata
 
 WORKDIR /app
 
+COPY --from=builder /app/migrations ./migrations
+
 # Copy the static binary from the builder stage
 COPY --from=builder /app/ender-tex-backend .
 

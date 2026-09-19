@@ -91,7 +91,7 @@ pipeline {
                         ssh -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
                             "$SSH_USER@${DEPLOY_HOST}" \
-                            "mkdir -p ${DEPLOY_DIR}/data && sudo chown -R \$USER:\$USER ${DEPLOY_DIR}"
+                            "mkdir -p ${DEPLOY_DIR}/data"
 
                         # 2. Copy docker-compose
                         scp -i "$SSH_KEY" \
