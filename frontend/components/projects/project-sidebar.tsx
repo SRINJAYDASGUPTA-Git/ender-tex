@@ -12,6 +12,7 @@ import {
     FolderUp,
     RefreshCw,
     Upload,
+    PanelLeftClose,
 } from "lucide-react";
 
 import {toast} from "sonner";
@@ -38,6 +39,7 @@ interface ProjectSidebarProps {
     project: Project;
     selectedPath: string | null;
     onFileSelect: (path: string) => void;
+    onCollapse?: () => void;
 }
 
 type ActionType =
@@ -59,6 +61,7 @@ export function ProjectSidebar({
                                    project,
                                    selectedPath,
                                    onFileSelect,
+                                   onCollapse,
                                }: ProjectSidebarProps) {
     const [files, setFiles] =
         useState<ProjectFileResponse>();
@@ -485,7 +488,7 @@ export function ProjectSidebar({
     };
 
     return (
-        <aside className="flex w-64 shrink-0 flex-col border-r">
+        <aside className="relative flex h-full w-full flex-col border-r">
 
             {/* Hidden upload inputs */}
             <input
@@ -512,6 +515,15 @@ export function ProjectSidebar({
                 </span>
 
                 <div className="flex items-center gap-0.5">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Collapse sidebar"
+                        onClick={onCollapse}
+                    >
+                        <PanelLeftClose className="h-3.5 w-3.5" />
+                    </Button>
 
                     <Button
                         variant="ghost"

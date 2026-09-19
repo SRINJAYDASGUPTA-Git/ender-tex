@@ -56,7 +56,7 @@ export function LoginForm({
 
             await refreshUser();
 
-            router.push("/dashboard");
+            router.push("/");
         } catch (error: any) {
             setError(
                 error.response?.data?.message ||

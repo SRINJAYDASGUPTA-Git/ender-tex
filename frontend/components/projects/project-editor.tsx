@@ -1,6 +1,16 @@
 "use client";
 
-import {useCallback, useEffect, useState} from "react";
+import {
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+} from "react";
+
+import {
+    PanelLeft,
+    PanelLeftClose,
+} from "lucide-react";
 import {pdfjs} from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -14,6 +24,7 @@ import {ProjectSidebar} from "./project-sidebar";
 import {ProjectToolbar} from "./project-toolbar";
 import {LatexEditor} from "@/components/projects/latex-editor";
 import {PdfPreview} from "@/components/projects/pdf-preview";
+import {Button} from "@/components/ui/button";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -37,6 +48,10 @@ export function ProjectEditor() {
     const [saving, setSaving] = useState(false);
     const [pdfVersion, setPdfVersion] = useState(0);
     const [compiling, setCompiling] = useState(false);
+    const [sidebarWidth, setSidebarWidth] = useState(256);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [resizingSidebar, setResizingSidebar] = useState(false);
+    const editorContainerRef = useRef<HTMLDivElement>(null);
 
     const openFile = useCallback(async (path: string) => {
         try {
@@ -88,6 +103,112 @@ export function ProjectEditor() {
 
         loadProject();
     }, [params.id, openFile]);
+    useEffect(() => {
+        const storedWidth = localStorage.getItem(
+            "endertex-sidebar-width"
+        );
+
+        const storedCollapsed = localStorage.getItem(
+            "endertex-sidebar-collapsed"
+        );
+
+        if (storedWidth) {
+            const width = Number(storedWidth);
+
+            if (
+                Number.isFinite(width) &&
+                width >= 200 &&
+                width <= 500
+            ) {
+                setSidebarWidth(width);
+            }
+        }
+
+        if (storedCollapsed !== null) {
+            setSidebarCollapsed(
+                storedCollapsed === "true"
+            );
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem(
+            "endertex-sidebar-width",
+            String(sidebarWidth)
+        );
+    }, [sidebarWidth]);
+
+    useEffect(() => {
+        localStorage.setItem(
+            "endertex-sidebar-collapsed",
+            String(sidebarCollapsed)
+        );
+    }, [sidebarCollapsed]);
+
+    useEffect(() => {
+        if (!resizingSidebar) {
+            return;
+        }
+
+        const handleMouseMove = (
+            event: MouseEvent
+        ) => {
+            const container =
+                editorContainerRef.current;
+
+            if (!container) {
+                return;
+            }
+
+            const rect =
+                container.getBoundingClientRect();
+
+            const width =
+                event.clientX - rect.left;
+
+            setSidebarWidth(
+                Math.min(
+                    500,
+                    Math.max(200, width)
+                )
+            );
+        };
+
+        const handleMouseUp = () => {
+            setResizingSidebar(false);
+        };
+
+        document.addEventListener(
+            "mousemove",
+            handleMouseMove
+        );
+
+        document.addEventListener(
+            "mouseup",
+            handleMouseUp
+        );
+
+        document.body.style.cursor =
+            "col-resize";
+
+        document.body.style.userSelect =
+            "none";
+
+        return () => {
+            document.removeEventListener(
+                "mousemove",
+                handleMouseMove
+            );
+
+            document.removeEventListener(
+                "mouseup",
+                handleMouseUp
+            );
+
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+        };
+    }, [resizingSidebar]);
 
     const saveFile = async () => {
         if (!file.path || !fileDirty || saving) {
@@ -163,15 +284,57 @@ export function ProjectEditor() {
     }
 
     return (
-        <div className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-lg border">
+        <div
+            data-project-editor
+            className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-lg border"
+        >
             <ProjectToolbar project={project} />
 
-            <div className="flex min-h-0 flex-1">
-                <ProjectSidebar
-                    project={project}
-                    selectedPath={selectedPath}
-                    onFileSelect={openFile}
-                />
+            <div
+                ref={editorContainerRef}
+                className="flex min-h-0 flex-1"
+            >
+                {!sidebarCollapsed && (
+                    <div
+                        className="relative h-full shrink-0"
+                        style={{
+                            width: sidebarWidth,
+                        }}
+                    >
+                        <ProjectSidebar
+                            project={project}
+                            selectedPath={selectedPath}
+                            onFileSelect={openFile}
+                            onCollapse={() =>
+                                setSidebarCollapsed(true)
+                            }
+                        />
+
+                        {/* Resize handle */}
+                        <div
+                            className="absolute right-0 top-0 z-50 h-full w-1 cursor-col-resize transition-colors hover:bg-primary/50"
+                            onMouseDown={(event) => {
+                                event.preventDefault();
+                                setResizingSidebar(true);
+                            }}
+                        />
+                    </div>
+                )}
+                {sidebarCollapsed &&(
+                    <div className="flex h-full w-9 shrink-0 items-start justify-center border-r pt-2">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Show files"
+                            onClick={() =>
+                                setSidebarCollapsed(false)
+                            }
+                        >
+                            <PanelLeft className="h-4 w-4" />
+                        </Button>
+                    </div>
+                )}
 
                 <main className="min-w-0 flex-1 overflow-hidden">
                     {selectedPath ? (
@@ -228,7 +391,7 @@ export function ProjectEditor() {
                     )}
                 </main>
 
-                <aside className="hidden w-[40%] border-l bg-muted/30 xl:block">
+                <aside className="hidden w-[38%] min-w-105 border-l bg-muted/30 xl:block">
                     <PdfPreview
                         projectId={params.id}
                         version={pdfVersion}

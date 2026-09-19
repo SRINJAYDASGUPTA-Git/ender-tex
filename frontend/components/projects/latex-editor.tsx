@@ -1,23 +1,32 @@
 "use client";
 
-import {useEffect, useRef, useState} from "react";
+import { useEffect, useRef, useState } from "react";
 import Editor, {
     BeforeMount,
     Monaco,
     OnMount,
 } from "@monaco-editor/react";
-import type {editor} from "monaco-editor";
-import {registerLaTeXLanguage} from "monaco-latex";
-import {Play} from "lucide-react";
+import type { editor } from "monaco-editor";
+import * as Y from "yjs";
+import { registerLaTeXLanguage } from "monaco-latex";
+import { Play } from "lucide-react";
 
 import {
     connectCollaborativeEditor,
     CollaborationStatus,
 } from "@/lib/collaboration";
 
-import {Button} from "@/components/ui/button";
-import {Kbd} from "@/components/ui/kbd";
-import {BsFloppy} from "react-icons/bs";
+import type { CollaborationSession } from "@/lib/collaboration";
+
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import {
+    Avatar,
+    AvatarFallback,
+    AvatarGroup,
+} from "@/components/ui/avatar";
+
+import { BsFloppy } from "react-icons/bs";
 import { useUser } from "@/providers/UserContext";
 
 interface LatexEditorProps {
@@ -37,6 +46,13 @@ interface LatexEditorProps {
     readOnly?: boolean;
 }
 
+interface ActiveUser {
+    clientId: number;
+    id: string;
+    name: string;
+    color: string;
+}
+
 const configureLatex = (monaco: Monaco) => {
     registerLaTeXLanguage(monaco);
 };
@@ -54,74 +70,260 @@ export function LatexEditor({
                                 saving = false,
                                 readOnly = false,
                             }: LatexEditorProps) {
-    const { user } = useUser(); // <-- Get current user
-    const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+    const { user } = useUser();
+
+    const editorRef =
+        useRef<editor.IStandaloneCodeEditor | null>(null);
+
+    const collaborationSessionRef =
+        useRef<CollaborationSession | null>(null);
+
     const saveRef = useRef(onSave);
     const compileRef = useRef(onCompile);
     const valueRef = useRef(value);
-    const collaborativeChangeRef = useRef(onCollaborativeContentChange);
+    const collaborativeChangeRef =
+        useRef(onCollaborativeContentChange);
 
-    const [editorInstance, setEditorInstance] = useState<editor.IStandaloneCodeEditor | null>(null);
-    const [collaborationStatus, setCollaborationStatus] = useState<CollaborationStatus>("disconnected");
+    const [
+        editorInstance,
+        setEditorInstance,
+    ] = useState<editor.IStandaloneCodeEditor | null>(null);
 
-    // <-- NEW: State to track other active users
-    const [activeUsers, setActiveUsers] = useState<{ id: string; name: string; color: string }[]>([]);
+    const [
+        collaborationStatus,
+        setCollaborationStatus,
+    ] = useState<CollaborationStatus>("disconnected");
 
-    useEffect(() => { saveRef.current = onSave; }, [onSave]);
-    useEffect(() => { compileRef.current = onCompile; }, [onCompile]);
-    useEffect(() => { valueRef.current = value; }, [value]);
-    useEffect(() => { collaborativeChangeRef.current = onCollaborativeContentChange; }, [onCollaborativeContentChange]);
+    const [activeUsers, setActiveUsers] =
+        useState<ActiveUser[]>([]);
+
+    /*
+     * Keep callback refs current.
+     */
+    useEffect(() => {
+        saveRef.current = onSave;
+    }, [onSave]);
 
     useEffect(() => {
-        if (!collaborative || !projectId || !fileName || !editorInstance || !user) return;
+        compileRef.current = onCompile;
+    }, [onCompile]);
+
+    useEffect(() => {
+        valueRef.current = value;
+    }, [value]);
+
+    useEffect(() => {
+        collaborativeChangeRef.current =
+            onCollaborativeContentChange;
+    }, [onCollaborativeContentChange]);
+
+    /*
+     * Connect to Yjs collaboration.
+     */
+    useEffect(() => {
+        if (
+            !collaborative ||
+            !projectId ||
+            !fileName ||
+            !editorInstance ||
+            !user
+        ) {
+            return;
+        }
 
         let disposed = false;
+
         let cleanup: (() => void) | undefined;
-        let sessionAwareness: any = null;
 
         const connect = async () => {
             try {
                 setCollaborationStatus("connecting");
-                const session = await connectCollaborativeEditor(
-                    projectId,
-                    fileName,
-                    editorInstance,
-                    setCollaborationStatus,
-                    valueRef.current,
-                    (content, local) => {
-                        collaborativeChangeRef.current?.(content, local);
-                    },
-                    { id: user.id, name: user.name } // <-- Pass current user
-                );
+
+                const session =
+                    await connectCollaborativeEditor(
+                        projectId,
+                        fileName,
+                        editorInstance,
+                        setCollaborationStatus,
+                        valueRef.current,
+                        (content, local) => {
+                            collaborativeChangeRef.current?.(
+                                content,
+                                local
+                            );
+                        },
+                        {
+                            id: user.id,
+                            name: user.name,
+                        }
+                    );
 
                 if (disposed) {
                     session.destroy();
                     return;
                 }
 
-                cleanup = session.destroy;
-                sessionAwareness = session.awareness;
+                /*
+                 * Keep the session in a ref.
+                 *
+                 * We don't want the entire component to rerender
+                 * every time the session object changes.
+                 */
+                collaborationSessionRef.current = session;
 
-                // --- NEW: Listen to presence changes ---
+                cleanup = () => {
+                    session.destroy();
+                };
+
+                /*
+                 * Publish our initial Monaco selection.
+                 *
+                 * y-monaco normally updates awareness when the
+                 * selection changes. This additionally makes our
+                 * current position available immediately after
+                 * connecting.
+                 */
+                const model = editorInstance.getModel();
+                const selection = editorInstance.getSelection();
+
+                if (model && selection) {
+                    const anchorOffset = model.getOffsetAt({
+                        lineNumber:
+                        selection.selectionStartLineNumber,
+                        column:
+                        selection.selectionStartColumn,
+                    });
+
+                    const headOffset = model.getOffsetAt({
+                        lineNumber:
+                        selection.positionLineNumber,
+                        column:
+                        selection.positionColumn,
+                    });
+
+                    session.awareness.setLocalStateField(
+                        "selection",
+                        {
+                            anchor:
+                                Y.createRelativePositionFromTypeIndex(
+                                    session.text,
+                                    anchorOffset
+                                ),
+                            head:
+                                Y.createRelativePositionFromTypeIndex(
+                                    session.text,
+                                    headOffset
+                                ),
+                        }
+                    );
+                }
+
+                /*
+                 * Build the active collaborator list from
+                 * Yjs awareness.
+                 */
                 const updatePresence = () => {
-                    const states = Array.from(session.awareness.getStates().values()) as any[];
-                    // Extract users, filter out ourselves
-                    const peers = states
-                        .map((state) => state.user)
-                        .filter((u) => u && u.id !== user.id);
+                    const states =
+                        Array.from(
+                            session.awareness
+                                .getStates()
+                                .entries()
+                        ) as [
+                            number,
+                            any
+                        ][];
 
-                    // Deduplicate in case a user has multiple tabs open
-                    const uniquePeers = Array.from(new Map(peers.map((p) => [p.id, p])).values()) as any;
+                    const peers = states
+                        .map(([clientId, state]) => {
+                            const collaborator =
+                                state?.user;
+
+                            if (!collaborator) {
+                                return null;
+                            }
+
+                            if (
+                                collaborator.id ===
+                                user.id
+                            ) {
+                                return null;
+                            }
+
+                            return {
+                                clientId,
+                                id: collaborator.id,
+                                name:
+                                    collaborator.name ??
+                                    "User",
+                                color:
+                                    collaborator.color ??
+                                    "rgb(59, 130, 246)",
+                            };
+                        })
+                        .filter(
+                            (
+                                peer
+                            ): peer is ActiveUser =>
+                                peer !== null
+                        );
+
+                    /*
+                     * A single user may have multiple tabs open.
+                     * Show one avatar per user.
+                     */
+                    const uniquePeers =
+                        Array.from(
+                            new Map(
+                                peers.map((peer) => [
+                                    peer.id,
+                                    peer,
+                                ])
+                            ).values()
+                        );
+
                     setActiveUsers(uniquePeers);
                 };
 
-                session.awareness.on("change", updatePresence);
-                updatePresence(); // Initial check
-                // ---------------------------------------
+                session.awareness.on(
+                    "change",
+                    updatePresence
+                );
 
+                updatePresence();
+
+                /*
+                 * Remove the awareness listener when this
+                 * particular session is destroyed.
+                 */
+                const originalCleanup = cleanup;
+
+                cleanup = () => {
+                    session.awareness.off(
+                        "change",
+                        updatePresence
+                    );
+
+                    originalCleanup?.();
+
+                    if (
+                        collaborationSessionRef.current ===
+                        session
+                    ) {
+                        collaborationSessionRef.current =
+                            null;
+                    }
+                };
             } catch (error) {
-                console.error("Collaboration connection failed:", error);
-                if (!disposed) setCollaborationStatus("disconnected");
+                console.error(
+                    "Collaboration connection failed:",
+                    error
+                );
+
+                if (!disposed) {
+                    setCollaborationStatus(
+                        "disconnected"
+                    );
+                }
             }
         };
 
@@ -129,20 +331,148 @@ export function LatexEditor({
 
         return () => {
             disposed = true;
+
             cleanup?.();
             cleanup = undefined;
-            setCollaborationStatus("disconnected");
+
+            collaborationSessionRef.current = null;
+
+            setCollaborationStatus(
+                "disconnected"
+            );
+
             setActiveUsers([]);
         };
-    }, [collaborative, projectId, fileName, editorInstance, user]);
-    const handleBeforeMount: BeforeMount = (monaco) => {
+    }, [
+        collaborative,
+        projectId,
+        fileName,
+        editorInstance,
+        user,
+    ]);
+
+    /*
+     * Jump the Monaco editor to another collaborator.
+     */
+    const jumpToCollaborator = (
+        clientId: number
+    ) => {
+        const session =
+            collaborationSessionRef.current;
+
+        const targetEditor =
+            editorRef.current;
+
+        if (!session || !targetEditor) {
+            return;
+        }
+
+        const state =
+            session.awareness
+                .getStates()
+                .get(clientId);
+
+        if (!state?.selection) {
+            return;
+        }
+
+        const {
+            anchor,
+            head,
+        } = state.selection;
+
+        const anchorPosition =
+            Y.createAbsolutePositionFromRelativePosition(
+                anchor,
+                session.doc
+            );
+
+        const headPosition =
+            Y.createAbsolutePositionFromRelativePosition(
+                head,
+                session.doc
+            );
+
+        if (
+            !anchorPosition ||
+            !headPosition
+        ) {
+            return;
+        }
+
+        /*
+         * Make sure the relative positions belong
+         * to our collaborative text.
+         */
+        if (
+            anchorPosition.type !== session.text ||
+            headPosition.type !== session.text
+        ) {
+            return;
+        }
+
+        const model =
+            targetEditor.getModel();
+
+        if (!model) {
+            return;
+        }
+
+        /*
+         * Convert Yjs character offsets to Monaco
+         * positions.
+         */
+        const anchorMonacoPosition =
+            model.getPositionAt(
+                anchorPosition.index
+            );
+
+        const headMonacoPosition =
+            model.getPositionAt(
+                headPosition.index
+            );
+
+        /*
+         * Reproduce their selection.
+         */
+        targetEditor.setSelection({
+            startLineNumber:
+            anchorMonacoPosition.lineNumber,
+            startColumn:
+            anchorMonacoPosition.column,
+
+            endLineNumber:
+            headMonacoPosition.lineNumber,
+            endColumn:
+            headMonacoPosition.column,
+        });
+
+        /*
+         * Move our viewport to their cursor.
+         */
+        targetEditor.revealPositionInCenter(
+            headMonacoPosition,
+            1
+        );
+
+        /*
+         * Give Monaco focus after jumping.
+         */
+        targetEditor.focus();
+    };
+
+    const handleBeforeMount: BeforeMount = (
+        monaco
+    ) => {
         configureLatex(monaco);
     };
 
     /*
-     * Monaco keyboard shortcuts.
+     * Monaco mount.
      */
-    const handleMount: OnMount = (instance) => {
+    const handleMount: OnMount = (
+        instance
+    ) => {
         editorRef.current = instance;
         setEditorInstance(instance);
 
@@ -152,13 +482,14 @@ export function LatexEditor({
         const model = instance.getModel();
 
         if (model) {
-            model.setEOL(
-                0, // EndOfLineSequence.LF
-            );
+            model.setEOL(0);
         }
 
+        /*
+         * Keyboard shortcuts.
+         */
         instance.onKeyDown((event) => {
-            const {browserEvent} = event;
+            const { browserEvent } = event;
 
             const modifier =
                 browserEvent.ctrlKey ||
@@ -168,6 +499,9 @@ export function LatexEditor({
                 return;
             }
 
+            /*
+             * Ctrl/Cmd + S
+             */
             if (
                 browserEvent.key.toLowerCase() ===
                 "s"
@@ -176,10 +510,16 @@ export function LatexEditor({
                 browserEvent.stopPropagation();
 
                 saveRef.current();
+
                 return;
             }
 
-            if (browserEvent.key === "Enter") {
+            /*
+             * Ctrl/Cmd + Enter
+             */
+            if (
+                browserEvent.key === "Enter"
+            ) {
                 browserEvent.preventDefault();
                 browserEvent.stopPropagation();
 
@@ -193,44 +533,116 @@ export function LatexEditor({
     const collaborationLabel =
         collaborationStatus === "connected"
             ? "Connected"
-            : collaborationStatus === "connecting"
+            : collaborationStatus ===
+            "connecting"
                 ? "Connecting..."
                 : "Offline";
+
+    /*
+     * Generate initials for collaborator avatars.
+     */
+    const getInitials = (
+        name: string
+    ) => {
+        const parts =
+            name.trim().split(/\s+/);
+
+        if (parts.length === 1) {
+            return parts[0]
+                .substring(0, 2)
+                .toUpperCase();
+        }
+
+        return (
+            parts[0][0] +
+            parts[parts.length - 1][0]
+        ).toUpperCase();
+    };
 
     return (
         <div className="flex h-full w-full flex-col">
             <div className="mb-4 flex h-9 shrink-0 items-center justify-between border-b px-2">
                 <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{fileName}</span>
+                    <span className="text-xs text-muted-foreground">
+                        {fileName}
+                    </span>
+
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                         LaTeX
                     </span>
+
                     {collaborative && (
                         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                             {collaborationLabel}
                         </span>
                     )}
 
-                    {/* --- NEW: Active User Avatars --- */}
+                    {/*
+                     * Collaborator avatars.
+                     */}
                     {activeUsers.length > 0 && (
-                        <div className="flex -space-x-1 ml-2">
-                            {activeUsers.map((u) => (
-                                <div
-                                    key={u.id}
-                                    title={u.name}
-                                    className="flex size-5 items-center justify-center rounded-full border border-background text-[9px] font-bold text-white shadow-sm ring-1 ring-border"
-                                    style={{ backgroundColor: u.color }}
-                                >
-                                    {u.name.substring(0, 2).toUpperCase()}
-                                </div>
-                            ))}
-                        </div>
+                        <AvatarGroup className="ml-1">
+                            {activeUsers.map(
+                                (collaborator) => (
+                                    <button
+                                        key={
+                                            collaborator.clientId
+                                        }
+                                        type="button"
+                                        title={`Jump to ${collaborator.name}`}
+                                        aria-label={`Jump to ${collaborator.name}`}
+                                        onClick={() =>
+                                            jumpToCollaborator(
+                                                collaborator.clientId
+                                            )
+                                        }
+                                        className="cursor-pointer rounded-full outline-none transition-transform hover:z-10 hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring"
+                                    >
+                                        <Avatar
+                                            size="sm"
+                                            className="ring-2 ring-background"
+                                            style={{
+                                                backgroundColor:
+                                                collaborator.color,
+                                            }}
+                                        >
+                                            <AvatarFallback
+                                                className="font-semibold text-white"
+                                                style={{
+                                                    backgroundColor:
+                                                    collaborator.color,
+                                                }}
+                                            >
+                                                {getInitials(
+                                                    collaborator.name
+                                                )}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                    </button>
+                                )
+                            )}
+                        </AvatarGroup>
                     )}
-                    {/* -------------------------------- */}
 
-                    {dirty && <span className="h-2 w-2 rounded-full bg-foreground" title="Unsaved changes" />}
-                    {!dirty && !saving && <span className="text-[10px] text-muted-foreground">Saved</span>}
-                    {saving && <span className="text-[10px] text-muted-foreground">Saving...</span>}
+                    {dirty && (
+                        <span
+                            className="h-2 w-2 rounded-full bg-foreground"
+                            title="Unsaved changes"
+                        />
+                    )}
+
+                    {!dirty &&
+                        !saving && (
+                            <span className="text-[10px] text-muted-foreground">
+                                Saved
+                            </span>
+                        )}
+
+                    {saving && (
+                        <span className="text-[10px] text-muted-foreground">
+                            Saving...
+                        </span>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -242,7 +654,9 @@ export function LatexEditor({
                         variant="outline"
                     >
                         <BsFloppy className="mr-1.5 h-3.5 w-3.5" />
-                        Save{" "}
+
+                        Save
+
                         <Kbd
                             data-icon="inline-end"
                             className="translate-x-0.5"
@@ -259,7 +673,9 @@ export function LatexEditor({
                         variant="outline"
                     >
                         <Play className="mr-1.5 h-3.5 w-3.5" />
-                        Compile{" "}
+
+                        Compile
+
                         <Kbd
                             data-icon="inline-end"
                             className="translate-x-0.5"
@@ -277,10 +693,7 @@ export function LatexEditor({
                     theme="vs-dark"
 
                     /*
-                     * In collaborative mode Yjs owns the Monaco
-                     * model through MonacoBinding.
-                     *
-                     * In normal mode React owns the value.
+                     * Yjs owns Monaco in collaborative mode.
                      */
                     value={
                         collaborative
@@ -292,25 +705,19 @@ export function LatexEditor({
                     onMount={handleMount}
 
                     /*
-                     * IMPORTANT:
+                     * React owns the editor in normal mode.
                      *
-                     * Do not send Monaco changes into React while
-                     * collaboration is active.
-                     *
-                     * MonacoBinding handles:
-                     *
-                     * Monaco ↔ Y.Text
-                     *
-                     * The old onChange → setState path would cause
-                     * React and Yjs to compete over the editor model,
-                     * which can cause cursor jumps.
+                     * Yjs/MonacoBinding owns it in collaborative
+                     * mode.
                      */
                     onChange={(nextValue) => {
                         if (collaborative) {
                             return;
                         }
 
-                        onChange(nextValue ?? "");
+                        onChange(
+                            nextValue ?? ""
+                        );
                     }}
 
                     options={{
@@ -339,11 +746,13 @@ export function LatexEditor({
 
                         readOnly,
 
-                        renderWhitespace: "selection",
+                        renderWhitespace:
+                            "selection",
 
                         smoothScrolling: true,
 
-                        cursorSmoothCaretAnimation: "on",
+                        cursorSmoothCaretAnimation:
+                            "on",
 
                         contextmenu: true,
                     }}

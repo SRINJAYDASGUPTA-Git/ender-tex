@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import {useRouter} from "next/navigation";
 import {
     ChevronDownIcon,
     FolderKanbanIcon,
@@ -11,7 +11,7 @@ import {
     UsersIcon,
 } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {Avatar, AvatarFallback} from "@/components/ui/avatar";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -19,10 +19,10 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useUser } from "@/providers/UserContext";
+import {useUser} from "@/providers/UserContext";
 
 export function AppNavbar() {
-    const { user } = useUser();
+    const {user} = useUser();
     const router = useRouter();
 
     const getInitials = (email: string) => {
@@ -55,19 +55,24 @@ export function AppNavbar() {
             <div className="flex h-14 items-center px-6">
                 {/* Brand */}
                 <Link
-                    href="/dashboard"
+                    href="/"
                     className="mr-8 font-semibold tracking-tight"
                 >
-                    Ender-TeX
+                    <span className={"text-3xl"}>
+                      Ender
+                      <span className="bg-linear-to-r from-violet-400 via-purple-500 to-fuchsia-500 bg-clip-text text-transparent">
+                        TeX
+                      </span>
+                    </span>
                 </Link>
 
                 {/* Main navigation */}
                 <nav className="flex items-center gap-1">
                     <Link
-                        href="/dashboard"
+                        href="/"
                         className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     >
-                        <LayoutDashboardIcon className="size-4" />
+                        <LayoutDashboardIcon className="size-4"/>
                         Dashboard
                     </Link>
 
@@ -75,7 +80,7 @@ export function AppNavbar() {
                         href="/projects"
                         className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     >
-                        <FolderKanbanIcon className="size-4" />
+                        <FolderKanbanIcon className="size-4"/>
                         Projects
                     </Link>
 
@@ -84,7 +89,7 @@ export function AppNavbar() {
                             href="/admin"
                             className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                         >
-                            <UsersIcon className="size-4" />
+                            <UsersIcon className="size-4"/>
                             Administration
                         </Link>
                     )}
@@ -115,7 +120,7 @@ export function AppNavbar() {
                                         </div>
                                     </div>
 
-                                    <ChevronDownIcon className="size-4 text-muted-foreground" />
+                                    <ChevronDownIcon className="size-4 text-muted-foreground"/>
                                 </button>
                             </DropdownMenuTrigger>
 
@@ -126,17 +131,17 @@ export function AppNavbar() {
                                 <DropdownMenuItem
                                     onClick={() => router.push("/settings")}
                                 >
-                                    <SettingsIcon />
+                                    <SettingsIcon/>
                                     Settings
                                 </DropdownMenuItem>
 
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator/>
 
                                 <DropdownMenuItem
                                     variant="destructive"
                                     onClick={handleLogout}
                                 >
-                                    <LogOutIcon />
+                                    <LogOutIcon/>
                                     Logout
                                 </DropdownMenuItem>
                             </DropdownMenuContent>

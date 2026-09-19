@@ -381,7 +381,7 @@ const AdminPage = () => {
         window.location.replace("/login");
     }
     if(user?.role !== "ADMIN"){
-        window.location.replace("/dashboard");
+        window.location.replace("/");
     }
     return (
         <>

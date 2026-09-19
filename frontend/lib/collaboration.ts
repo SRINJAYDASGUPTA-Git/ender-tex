@@ -115,6 +115,18 @@ export async function connectCollaborativeEditor(
         name: currentUser.name,
         color: getUserColor(currentUser.id),
     });
+
+    updateCursorStyles(provider.awareness);
+
+    const handleAwarenessChange = () => {
+        updateCursorStyles(provider.awareness);
+    };
+
+    provider.awareness.on(
+        "change",
+        handleAwarenessChange
+    );
+
     // ---------------------------------------
 
     let binding: InstanceType<typeof MonacoBinding> | null = null;
@@ -160,6 +172,10 @@ export async function connectCollaborativeEditor(
         destroy() {
             text.unobserve(handleTextChange);
             provider.off("status", handleStatus);
+            provider.awareness.off(
+                "change",
+                handleAwarenessChange
+            );
             provider.off("sync", handleSync);
             binding?.destroy();
             binding = null;
@@ -167,4 +183,50 @@ export async function connectCollaborativeEditor(
             doc.destroy();
         },
     };
+}
+
+function escapeCssString(value: string): string {
+    return value
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, " ");
+}
+
+function updateCursorStyles(awareness: any) {
+    let css = "";
+
+    awareness.getStates().forEach(
+        (state: any, clientId: number) => {
+            const user = state?.user;
+
+            if (!user?.color) {
+                return;
+            }
+
+            css += `
+                .yRemoteSelection-${clientId},
+                .yRemoteSelectionHead-${clientId} {
+                    --user-color: ${user.color};
+                }
+
+                .yRemoteSelectionHead-${clientId}::after {
+                    content: "${escapeCssString(
+                user.name ?? "User"
+            )}";
+                }
+            `;
+        }
+    );
+
+    let style = document.getElementById(
+        "yjs-monaco-cursor-styles"
+    ) as HTMLStyleElement | null;
+
+    if (!style) {
+        style = document.createElement("style");
+        style.id = "yjs-monaco-cursor-styles";
+        document.head.appendChild(style);
+    }
+
+    style.textContent = css;
 }
