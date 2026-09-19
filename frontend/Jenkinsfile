@@ -32,13 +32,13 @@ pipeline {
             }
         }
 
-        stage("Install Dependencies") {
-            steps {
-                dir("ender-does-frontend") {
-                    sh "npm ci"
-                }
-            }
-        }
+//        stage("Install Dependencies") {
+//            steps {
+//                dir("ender-does-frontend") {
+//                    sh "npm ci"
+//                }
+//            }
+//        }
 
 //        stage("Install Playwright Browser") {
 //            steps {
