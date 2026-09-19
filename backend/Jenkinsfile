@@ -79,20 +79,8 @@ pipeline {
                         variable: 'COLLAB_SECRET_TOKEN'
                     ),
                     string(
-                        credentialsId: 'paper-server-smtp-host',
-                        variable: 'SMTP_HOST'
-                    ),
-                    string(
-                        credentialsId: 'paper-server-smtp-user',
-                        variable: 'SMTP_USERNAME'
-                    ),
-                    string(
                         credentialsId: 'paper-server-smtp-pass',
                         variable: 'SMTP_PASSWORD'
-                    ),
-                    string(
-                        credentialsId: 'paper-server-smtp-from',
-                        variable: 'SMTP_FROM'
                     )
                 ]) {
                     sh '''
@@ -121,11 +109,11 @@ PAPER_SERVER_PORT=8080
 PAPER_SERVER_DATA_DIR=/app/data
 LATEX_IMAGE=texlive/texlive:latest
 APP_URL="https://ender-tex.srinjaydg.in"
-SMTP_HOST=${SMTP_HOST}
+SMTP_HOST=smtp.zoho.in
 SMTP_PORT=587
-SMTP_USERNAME=${SMTP_USERNAME}
+SMTP_USERNAME=endertex@srinjaydg.in
 SMTP_PASSWORD=${SMTP_PASSWORD}
-SMTP_FROM=${SMTP_FROM}
+SMTP_FROM=EnderTex <endertex@srinjaydg.in>
 COLLAB_SECRET_TOKEN=${COLLAB_SECRET_TOKEN}
 EOF
 
