@@ -32,13 +32,13 @@ pipeline {
             }
         }
 
-//        stage("Install Dependencies") {
-//            steps {
-//                dir("ender-does-frontend") {
-//                    sh "npm ci"
-//                }
-//            }
-//        }
+        stage("Install Dependencies") {
+            steps {
+                dir("frontend") {
+                    sh "npm ci"
+                }
+            }
+        }
 
 //        stage("Install Playwright Browser") {
 //            steps {
@@ -58,7 +58,7 @@ pipeline {
 
         stage("Build Docker Image") {
             steps {
-                dir("ender-does-frontend") {
+                dir("frontend") {
                     sh """
                         docker build \
                             -t ${IMAGE_NAME}:${BUILD_NUMBER} \
