@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Invitation = {
@@ -17,7 +17,8 @@ type CurrentUser = {
     name: string;
 };
 
-export default function AcceptInvitationPage() {
+// 1. Extract the main logic into a separate component
+function AcceptInvitationContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -173,19 +174,19 @@ export default function AcceptInvitationPage() {
 
     if (loading || checkingAuth) {
         return (
-            <main className="flex min-h-screen items-center justify-center">
+            <div className="flex min-h-screen items-center justify-center">
                 <p>
                     {checkingAuth
                         ? "Checking your account..."
                         : "Loading invitation..."}
                 </p>
-            </main>
+            </div>
         );
     }
 
     if (error && !invitation) {
         return (
-            <main className="flex min-h-screen items-center justify-center px-4">
+            <div className="flex min-h-screen items-center justify-center px-4">
                 <div className="text-center">
                     <h1 className="text-2xl font-semibold">
                         Invitation unavailable
@@ -195,7 +196,7 @@ export default function AcceptInvitationPage() {
                         {error}
                     </p>
                 </div>
-            </main>
+            </div>
         );
     }
 
@@ -206,7 +207,7 @@ export default function AcceptInvitationPage() {
     const isExistingUser = invitation.existing_user;
 
     return (
-        <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="flex min-h-screen items-center justify-center px-4">
             <div className="w-full max-w-md">
                 <div className="mb-8 text-center">
                     <h1 className="text-3xl font-bold">
@@ -345,6 +346,17 @@ export default function AcceptInvitationPage() {
                     </form>
                 )}
             </div>
+        </div>
+    );
+}
+
+// 2. Wrap the content component inside a Suspense boundary in the exported page
+export default function AcceptInvitationPage() {
+    return (
+        <main className="flex min-h-screen items-center justify-center">
+            <Suspense fallback={<p>Loading invitation...</p>}>
+                <AcceptInvitationContent />
+            </Suspense>
         </main>
     );
 }

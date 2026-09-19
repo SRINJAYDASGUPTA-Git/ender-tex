@@ -182,10 +182,7 @@ function TreeItem({
     return (
         <div>
             <ContextMenu>
-                <ContextMenuTrigger asChild>
-                    {item}
-                </ContextMenuTrigger>
-
+                <ContextMenuTrigger render={item} />
                 <ContextMenuContent className="w-48">
                     {node.type === "directory" && (
                         <>

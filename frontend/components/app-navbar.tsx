@@ -99,29 +99,28 @@ export function AppNavbar() {
                 <div className="ml-auto">
                     {user && (
                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                                >
-                                    <Avatar className="size-8 rounded-lg">
-                                        <AvatarFallback className="rounded-lg">
-                                            {getInitials(user.name)}
-                                        </AvatarFallback>
-                                    </Avatar>
-
-                                    <div className="hidden text-left leading-tight sm:block">
-                                        <div className="max-w-48 truncate text-sm font-medium">
-                                            {user.name}
-                                        </div>
-
-                                        <div className="text-xs text-muted-foreground">
-                                            {user.role}
-                                        </div>
+                            <DropdownMenuTrigger
+                                render={
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                                    />
+                                }
+                            >
+                                <Avatar className="size-8 rounded-lg">
+                                    <AvatarFallback className="rounded-lg">
+                                        {getInitials(user.name)}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <div className="hidden text-left leading-tight sm:block">
+                                    <div className="max-w-48 truncate text-sm font-medium">
+                                        {user.name}
                                     </div>
-
-                                    <ChevronDownIcon className="size-4 text-muted-foreground"/>
-                                </button>
+                                    <div className="text-xs text-muted-foreground">
+                                        {user.role}
+                                    </div>
+                                </div>
+                                <ChevronDownIcon className="size-4 text-muted-foreground"/>
                             </DropdownMenuTrigger>
 
                             <DropdownMenuContent
