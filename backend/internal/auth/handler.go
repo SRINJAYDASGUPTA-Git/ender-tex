@@ -91,7 +91,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, // HTTPS will be enabled in production.
+		Secure:   true, // HTTPS will be enabled in production.
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionDuration.Seconds()),
 	})
@@ -279,7 +279,7 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 			Value:    acceptance.SessionToken,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   false, // true in production HTTPS
+			Secure:   true, // true in production HTTPS
 			SameSite: http.SameSiteLaxMode,
 			Expires:  acceptance.Session.ExpiresAt,
 		})

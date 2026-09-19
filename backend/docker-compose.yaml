@@ -1,0 +1,25 @@
+services:
+  backend:
+    image: srinjay2004/ender-tex-backend:latest
+    container_name: ender-tex-backend
+
+    env_file:
+      - .env
+
+    ports:
+      - "8082:8080" # Exposed on 8082
+
+    volumes:
+      # Allow the Go app to spawn TeX Docker containers on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persist SQLite DB and TeX project files
+      - ./data:/app/data
+
+    restart: unless-stopped
+
+    networks:
+      - apps
+
+networks:
+  apps:
+    external: true

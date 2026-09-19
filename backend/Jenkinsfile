@@ -1,0 +1,257 @@
+pipeline {
+    agent {
+        label 'java-maven-agent'
+    }
+
+    environment {
+        PROJECT_NAME = 'ender-tex-backend'
+        DOCKER_IMAGE = 'srinjay2004/ender-tex-backend'
+        DEPLOY_DIR   = '/srv/ender-tex-backend'
+        DEPLOY_HOST  = '172.17.0.1'
+        IMAGE_TAG    = "${BUILD_NUMBER}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir('backend') {
+                    sh 'go test -v ./...'
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                dir('backend') {
+                    sh '''
+                        docker build \
+                            -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
+                            -t ${DOCKER_IMAGE}:latest \
+                            .
+                    '''
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            -u "$DOCKER_USER" \
+                            --password-stdin
+
+                        docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
+
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'deployment-user-ssh-creds',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    ),
+                    string(
+                        credentialsId: 'paper-server-collab-secret',
+                        variable: 'COLLAB_SECRET_TOKEN'
+                    ),
+                    string(
+                        credentialsId: 'paper-server-smtp-host',
+                        variable: 'SMTP_HOST'
+                    ),
+                    string(
+                        credentialsId: 'paper-server-smtp-user',
+                        variable: 'SMTP_USERNAME'
+                    ),
+                    string(
+                        credentialsId: 'paper-server-smtp-pass',
+                        variable: 'SMTP_PASSWORD'
+                    ),
+                    string(
+                        credentialsId: 'paper-server-smtp-from',
+                        variable: 'SMTP_FROM'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+                        echo "Deploying ${PROJECT_NAME} build ${IMAGE_TAG}"
+
+                        # 1. Create deployment and data directories
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$SSH_USER@${DEPLOY_HOST}" \
+                            "mkdir -p ${DEPLOY_DIR}/data"
+
+                        # 2. Copy docker-compose
+                        scp -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            backend/docker-compose.yaml \
+                            "$SSH_USER@${DEPLOY_HOST}:${DEPLOY_DIR}/docker-compose.yaml"
+
+                        # 3. Create the customized .env file for the Go backend
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$SSH_USER@${DEPLOY_HOST}" \
+                            "cat > ${DEPLOY_DIR}/.env" <<EOF
+PAPER_SERVER_HOST=0.0.0.0
+PAPER_SERVER_PORT=8080
+PAPER_SERVER_DATA_DIR=/app/data
+LATEX_IMAGE=texlive/texlive:latest
+APP_URL=ender-tex-frontend:3000
+SMTP_HOST=${SMTP_HOST}
+SMTP_PORT=587
+SMTP_USERNAME=${SMTP_USERNAME}
+SMTP_PASSWORD=${SMTP_PASSWORD}
+SMTP_FROM=${SMTP_FROM}
+COLLAB_SECRET_TOKEN=${COLLAB_SECRET_TOKEN}
+EOF
+
+                        # 4. Ensure Docker network exists
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$SSH_USER@${DEPLOY_HOST}" \
+                            "docker network inspect apps >/dev/null 2>&1 || docker network create apps"
+
+                        # 5. Pull new image and restart the container
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$SSH_USER@${DEPLOY_HOST}" \
+                            "cd ${DEPLOY_DIR} && \
+                             docker compose pull && \
+                             docker compose up -d --remove-orphans"
+
+                        # 6. Cleanup old images
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$SSH_USER@${DEPLOY_HOST}" \
+                            "docker image prune -f"
+                    '''
+                }
+            }
+        }
+
+        stage('Configure Subdomain') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'deployment-user-ssh-creds',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            "$SSH_USER@${DEPLOY_HOST}" \
+                            "sudo -n /usr/local/bin/deploy-subdomain api paper 8082"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment successful: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+            emailext(
+                to: 'dasguptasrinjay2004@gmail.com',
+                subject: "🚀 Deployment Successful — ${PROJECT_NAME} #${BUILD_NUMBER}",
+                mimeType: 'text/html',
+                body: """
+                <div style="font-family: Arial, sans-serif; max-width: 700px; margin: auto;">
+                    <div style="background: linear-gradient(135deg, #0f172a, #1e3a8a); color: white; padding: 30px; border-radius: 12px 12px 0 0;">
+                        <h1>🚀 Deployment Successful</h1>
+                        <p>${PROJECT_NAME} has been deployed successfully.</p>
+                    </div>
+                    <div style="background: #f8fafc; padding: 25px; border: 1px solid #e2e8f0;">
+                        <h2>Build Information</h2>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="padding: 10px; font-weight: bold;">Project</td>
+                                <td style="padding: 10px;">${PROJECT_NAME}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; font-weight: bold;">Build</td>
+                                <td style="padding: 10px;">#${BUILD_NUMBER}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; font-weight: bold;">Docker Image</td>
+                                <td style="padding: 10px;">${DOCKER_IMAGE}:${IMAGE_TAG}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; font-weight: bold;">Branch</td>
+                                <td style="padding: 10px;">${env.BRANCH_NAME}</td>
+                            </tr>
+                        </table>
+                        <div style="margin-top: 25px; padding: 15px; background: #dcfce7; border-radius: 8px; color: #166534;">
+                            <strong>✓ Production deployment completed successfully.</strong>
+                        </div>
+                        <div style="margin-top: 25px;">
+                            <a href="${BUILD_URL}" style="display: inline-block; padding: 12px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px;">
+                                View Jenkins Build
+                            </a>
+                        </div>
+                    </div>
+                    <div style="padding: 15px; text-align: center; color: #64748b; font-size: 12px;">
+                        Paper Server CI/CD • Jenkins
+                    </div>
+                </div>
+                """
+            )
+        }
+
+        failure {
+            echo "Pipeline failed."
+            emailext(
+                to: 'dasguptasrinjay2004@gmail.com',
+                subject: "❌ Deployment Failed — ${PROJECT_NAME} #${BUILD_NUMBER}",
+                mimeType: 'text/html',
+                body: """
+                <div style="font-family: Arial, sans-serif; max-width: 700px; margin: auto;">
+                    <div style="background: linear-gradient(135deg, #450a0a, #991b1b); color: white; padding: 30px; border-radius: 12px 12px 0 0;">
+                        <h1>❌ Deployment Failed</h1>
+                        <p>${PROJECT_NAME} deployment failed.</p>
+                    </div>
+                    <div style="background: #f8fafc; padding: 25px;">
+                        <h2>Build Information</h2>
+                        <p><strong>Project:</strong> ${PROJECT_NAME}</p>
+                        <p><strong>Build:</strong> #${BUILD_NUMBER}</p>
+                        <p><strong>Branch:</strong> ${env.BRANCH_NAME}</p>
+                        <div style="margin-top: 25px; padding: 15px; background: #fee2e2; border-radius: 8px; color: #991b1b;">
+                            <strong>✗ The pipeline failed.</strong><br>Check the Jenkins console output for details.
+                        </div>
+                        <div style="margin-top: 25px;">
+                            <a href="${BUILD_URL}" style="display: inline-block; padding: 12px 20px; background: #dc2626; color: white; text-decoration: none; border-radius: 6px;">
+                                View Failed Build
+                            </a>
+                        </div>
+                    </div>
+                    <div style="padding: 15px; text-align: center; color: #64748b; font-size: 12px;">
+                        Paper Server CI/CD • Jenkins
+                    </div>
+                </div>
+                """
+            )
+        }
+    }
+}
