@@ -11,18 +11,37 @@ export type CollaborationStatus =
 export interface CollaborationSession {
     doc: Y.Doc;
     text: Y.Text;
-
     provider: {
         destroy: () => void;
+        awareness: any; // <-- Expose awareness
     };
-
     binding: {
         destroy: () => void;
     };
-
+    awareness: any; // <-- Add this to easily access it in React
     destroy: () => void;
 }
 
+// Simple hash to consistently assign a color to a specific user ID
+const getUserColor = (id: string) => {
+    // MUST use rgb() format. y-monaco parses this string to inject
+    // opacity using .replace('rgb', 'rgba') for text selections!
+    const colors = [
+        "rgb(239, 68, 68)",   // red-500
+        "rgb(249, 115, 22)",  // orange-500
+        "rgb(245, 158, 11)",  // amber-500
+        "rgb(16, 185, 129)",  // emerald-500
+        "rgb(59, 130, 246)",  // blue-500
+        "rgb(99, 102, 241)",  // indigo-500
+        "rgb(139, 92, 246)",  // violet-500
+        "rgb(236, 72, 153)"   // pink-500
+    ];
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+        hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+};
 /**
  * Encode the room in exactly the format expected by
  * the Go collaboration backend:
@@ -57,257 +76,93 @@ export async function connectCollaborativeEditor(
     projectId: string,
     fileName: string,
     editorInstance: editor.IStandaloneCodeEditor,
-    setStatus: (
-        status: CollaborationStatus
-    ) => void,
-
+    setStatus: (status: CollaborationStatus) => void,
     _initialContent: string,
-
-    onContentChange: (
-        content: string,
-        local: boolean,
-    ) => void,
+    onContentChange: (content: string, local: boolean) => void,
+    currentUser: { id: string; name: string } // <-- Add currentUser parameter
 ): Promise<CollaborationSession> {
-    /*
-     * These packages access browser APIs, so load them
-     * dynamically rather than at module evaluation time.
-     */
-    const [
-        {WebsocketProvider},
-        {MonacoBinding},
-    ] = await Promise.all([
+
+    const [{ WebsocketProvider }, { MonacoBinding }] = await Promise.all([
         import("y-websocket"),
         import("y-monaco"),
     ]);
 
-    const model =
-        editorInstance.getModel();
+    const model = editorInstance.getModel();
+    if (!model) throw new Error("Monaco model is not available.");
 
-    if (!model) {
-        throw new Error(
-            "Monaco model is not available.",
-        );
-    }
+    const tokenResponse = await axios.get<{ token: string }>("/collaboration/token");
+    const token = tokenResponse.data.token;
+    if (!token) throw new Error("Collaboration token was not returned.");
 
-    /*
-     * Get a short-lived collaboration token from
-     * the authenticated Go backend.
-     */
-    const tokenResponse =
-        await axios.get<{
-            token: string;
-        }>("/collaboration/token");
+    const room = encodeRoom(projectId, fileName);
 
-    const token =
-        tokenResponse.data.token;
-
-    if (!token) {
-        throw new Error(
-            "Collaboration token was not returned.",
-        );
-    }
-
-    /*
-     * The Go server route is:
-     *
-     * /api/yjs/{room}
-     *
-     * The room itself must be a SINGLE URL-safe
-     * base64 segment.
-     */
-    const room =
-        encodeRoom(
-            projectId,
-            fileName,
-        );
-
-    /*
-     * The Go backend is running the Ygo websocket
-     * server on the same HTTP server as the REST API.
-     */
+    // Ensure this points to the Next.js proxy if you used the Next.js rewrite fix
     const websocketBase = process.env.NEXT_PUBLIC_WS_URL ??
         (typeof window !== "undefined" ? `ws://${window.location.host}` : "ws://localhost:3000");
+    const websocketServer = `${websocketBase.replace(/\/$/, "")}/api/yjs`;
 
-    const websocketServer =
-        `${websocketBase.replace(/\/$/, "")}/api/yjs`;
+    const doc = new Y.Doc();
+    const text = doc.getText("content");
 
-    console.log(
-        "[Yjs] connecting",
-        `${websocketServer}/${room}`,
-    );
+    const provider = new WebsocketProvider(websocketServer, room, doc, {
+        connect: true,
+        params: { token },
+    });
 
-    const doc =
-        new Y.Doc();
+    // --- NEW: Set up Local User Presence ---
+    provider.awareness.setLocalStateField("user", {
+        id: currentUser.id,
+        name: currentUser.name,
+        color: getUserColor(currentUser.id),
+    });
+    // ---------------------------------------
 
-    const text =
-        doc.getText("content");
+    let binding: InstanceType<typeof MonacoBinding> | null = null;
 
-    console.log("[YJS] websocket URL:", websocketServer);
-    console.log("[YJS] room:", room);
-    console.log("[YJS] token present:", Boolean(token));
-    console.log("[YJS] token length:", token.length);
-
-    /*
-     * y-websocket's WebsocketProvider speaks the
-     * Yjs websocket protocol that Ygo implements.
-     */
-    const provider =
-        new WebsocketProvider(
-            websocketServer,
-            room,
-            doc,
-            {
-                connect: true,
-
-                /*
-                 * Your Go authorize() function reads:
-                 *
-                 * r.URL.Query().Get("token")
-                 */
-                params: {
-                    token,
-                },
-            },
-        );
-
-    let binding:
-        InstanceType<typeof MonacoBinding> |
-        null = null;
-
-    const handleStatus = ({
-                              status,
-                          }: {
-        status:
-            | "connecting"
-            | "connected"
-            | "disconnected";
-    }) => {
-        console.log(
-            `[Yjs] ${projectId}/${fileName}: ${status}`,
-        );
-
+    const handleStatus = ({ status }: { status: "connecting" | "connected" | "disconnected" }) => {
         setStatus(status);
     };
+    provider.on("status", handleStatus);
 
-    provider.on(
-        "status",
-        handleStatus,
-    );
-
-    /*
-     * React gets a representation of the current
-     * collaborative document.
-     */
-    const handleTextChange = (
-        event: Y.YTextEvent,
-    ) => {
-        const content =
-            text.toString();
-
-        const local =
-            binding !== null &&
-            event.transaction.origin === binding;
-
-        onContentChange(
-            content,
-            local,
-        );
+    const handleTextChange = (event: Y.YTextEvent) => {
+        const content = text.toString();
+        const local = binding !== null && event.transaction.origin === binding;
+        onContentChange(content, local);
     };
+    text.observe(handleTextChange);
 
-    text.observe(
-        handleTextChange,
-    );
+    const handleSync = (synced: boolean) => {
+        if (!synced || binding !== null) return;
 
-    /*
-     * Ygo loads the initial filesystem contents
-     * through OnLoadDocument on the Go side.
-     *
-     * Therefore the browser does NOT seed the document.
-     */
-    const handleSync = (
-        synced: boolean,
-    ) => {
-        if (!synced || binding !== null) {
-            return;
-        }
-
-        console.log(
-            `[Yjs] synced ${projectId}/${fileName}`,
+        binding = new MonacoBinding(
+            text,
+            model,
+            new Set([editorInstance]),
+            provider.awareness
         );
-
-        /*
-         * At this point the Y.Doc already contains
-         * whatever the Go server loaded from the
-         * filesystem or received from another peer.
-         */
-        binding =
-            new MonacoBinding(
-                text,
-                model,
-                new Set([
-                    editorInstance,
-                ]),
-                provider.awareness,
-            );
-
-        /*
-         * Make React aware of the current document
-         * without marking it as a local edit.
-         */
-        onContentChange(
-            text.toString(),
-            false,
-        );
+        onContentChange(text.toString(), false);
     };
-
-    provider.on(
-        "sync",
-        handleSync,
-    );
-
-    /*
-     * Canonical line endings.
-     */
+    provider.on("sync", handleSync);
     model.setEOL(0);
-
-    /*
-     * Handle the case where synchronization completed
-     * before our listener was attached.
-     */
-    if (provider.synced) {
-        handleSync(true);
-    }
+    if (provider.synced) handleSync(true);
 
     return {
         doc,
         text,
         provider,
-
+        awareness: provider.awareness, // <-- Expose awareness
         binding: {
             destroy() {
                 binding?.destroy();
                 binding = null;
             },
         },
-
         destroy() {
-            text.unobserve(
-                handleTextChange,
-            );
-
-            provider.off(
-                "status",
-                handleStatus,
-            );
-
-            provider.off(
-                "sync",
-                handleSync,
-            );
-
+            text.unobserve(handleTextChange);
+            provider.off("status", handleStatus);
+            provider.off("sync", handleSync);
             binding?.destroy();
             binding = null;
-
             provider.destroy();
             doc.destroy();
         },

@@ -130,3 +130,39 @@
     @apply font-sans;
   }
 }
+
+/* --- Yjs Monaco Collaborative Cursors (Fixed) --- */
+
+/* 1. The main vertical cursor line */
+.yRemoteSelectionHead {
+  position: absolute !important;
+  border-left-width: 2px !important;
+  border-left-style: solid !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  z-index: 99 !important;
+  opacity: 1 !important; /* Prevents the cursor from looking faint */
+}
+
+/* 2. The colored ball sitting on top of the cursor */
+.yRemoteSelectionHead::after {
+  position: absolute !important;
+  content: ' ' !important; /* Required to render the pseudo-element */
+
+  /* y-monaco paints the ball using border-color. Do NOT override border-color here. */
+  border-width: 4px !important;
+  border-style: solid !important;
+  border-radius: 50% !important;
+
+  /* Centering the ball over the 2px line */
+  left: -4px !important;
+  top: -4px !important;
+  display: block !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 3. The text selection highlight */
+.yRemoteSelection {
+  opacity: 0.3 !important;
+}
