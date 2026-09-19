@@ -249,18 +249,18 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var authenticatedUser *User
-	
+
 	cookie, err := r.Cookie(sessionCookieName)
 	if err == nil && cookie.Value != "" {
 		authenticatedUser, _ = h.service.GetUserBySessionToken(cookie.Value)
 	}
-	
+
 	acceptance, err := h.service.AcceptInvitation(
 		req.Token,
 		req.Password,
 		authenticatedUser,
 	)
-	
+
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvitationNotFound):
@@ -335,9 +335,9 @@ func (h *Handler) GetInvitationDetails(
 	}
 
 	writeJSON(w, http.StatusOK, invitationDetailsResponse{
-		Email:     invitation.Email,
-		Name:      invitation.Name,
+		Email:        invitation.Email,
+		Name:         invitation.Name,
 		ExistingUser: invitation.ExistingUser,
-		ExpiresAt: invitation.ExpiresAt,
+		ExpiresAt:    invitation.ExpiresAt,
 	})
 }

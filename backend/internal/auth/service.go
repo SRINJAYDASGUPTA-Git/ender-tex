@@ -34,10 +34,10 @@ type ProjectChecker interface {
 	GetName(projectID string) (string, error)
 }
 type InvitationAcceptance struct {
-	User        *User
-	Session     *Session
+	User         *User
+	Session      *Session
 	SessionToken string
-	ProjectID   string
+	ProjectID    string
 }
 type Service struct {
 	repository  *Repository
@@ -322,14 +322,14 @@ func (s *Service) CreateInvitation(email string, name string, role Role, project
 		return nil, "", fmt.Errorf("get project name: %w", err)
 	}
 
-		_, err = s.repository.GetUserByEmail(email)
-	
+	_, err = s.repository.GetUserByEmail(email)
+
 	existingUser := false
-	
+
 	if err == nil {
-    existingUser = true
+		existingUser = true
 	} else if !errors.Is(err, ErrUserNotFound) {
-    return nil, "", err
+		return nil, "", err
 	}
 
 	token, err := generateToken()
@@ -340,13 +340,13 @@ func (s *Service) CreateInvitation(email string, name string, role Role, project
 	expiration := time.Now().Add(invitationDuration)
 
 	invitation := &Invitation{
-		ID:        uuid.NewString(),
-		Email:     email,
-		Name:      name,
-		Role:      role,
+		ID:           uuid.NewString(),
+		Email:        email,
+		Name:         name,
+		Role:         role,
 		ProjectID:    projectID,
 		ExistingUser: existingUser,
-		ExpiresAt: expiration,
+		ExpiresAt:    expiration,
 	}
 
 	if err := s.repository.CreateInvitation(
@@ -422,10 +422,10 @@ func (s *Service) AcceptInvitation(
 		}
 
 		return &InvitationAcceptance{
-			User:        user,
-			Session:     nil,
+			User:         user,
+			Session:      nil,
 			SessionToken: "",
-			ProjectID:   invitation.ProjectID,
+			ProjectID:    invitation.ProjectID,
 		}, nil
 	}
 

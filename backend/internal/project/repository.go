@@ -62,7 +62,7 @@ func (r *Repository) Create(project *Project) error {
 			id,
 			user_id,
 			project_id,
-			role
+			permission
 		)
 		VALUES (?, ?, ?, ?)
 	`,
@@ -74,6 +74,10 @@ func (r *Repository) Create(project *Project) error {
 
 	if err != nil {
 		return fmt.Errorf("create project: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit project: %w", err)
 	}
 
 	return nil

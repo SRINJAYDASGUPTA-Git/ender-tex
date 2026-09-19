@@ -434,7 +434,7 @@ func (s *Storage) DeleteDirectory(
 	}
 
 	if len(entries) > 0 {
-		return errors.New("directory is not empty")
+		return ErrDirectoryNotEmpty
 	}
 
 	if err := os.Remove(path); err != nil {

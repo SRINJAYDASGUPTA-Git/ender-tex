@@ -6,8 +6,8 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
-	"net/smtp"
 	"net/mail"
+	"net/smtp"
 	"time"
 )
 
@@ -24,10 +24,10 @@ type SMTPService struct {
 }
 
 type InvitationTemplateData struct {
-	Name      string
-	InviteURL string
+	Name        string
+	InviteURL   string
 	ProjectName string
-	ExpiresAt string
+	ExpiresAt   string
 }
 
 func NewSMTPService(
@@ -63,10 +63,10 @@ func (s *SMTPService) SendInvitation(
 	expiresAt time.Time,
 ) error {
 	data := InvitationTemplateData{
-		Name:      name,
-		InviteURL: inviteURL,
+		Name:        name,
+		InviteURL:   inviteURL,
 		ProjectName: projectName,
-		ExpiresAt: expiresAt.Format(time.RFC1123),
+		ExpiresAt:   expiresAt.Format(time.RFC1123),
 	}
 
 	var body bytes.Buffer
@@ -108,33 +108,33 @@ func (s *SMTPService) SendInvitation(
 
 	from, err := mail.ParseAddress(s.from)
 	if err != nil {
-    return fmt.Errorf("parse SMTP from address: %w", err)
+		return fmt.Errorf("parse SMTP from address: %w", err)
 	}
-	
+
 	if err := client.Mail(from.Address); err != nil {
-    return fmt.Errorf("set sender: %w", err)
+		return fmt.Errorf("set sender: %w", err)
 	}
-	
+
 	if err := client.Rcpt(recipient); err != nil {
-    return fmt.Errorf("set recipient: %w", err)
+		return fmt.Errorf("set recipient: %w", err)
 	}
-	
+
 	writer, err := client.Data()
 	if err != nil {
-    return fmt.Errorf("open SMTP data connection: %w", err)
+		return fmt.Errorf("open SMTP data connection: %w", err)
 	}
-	
+
 	message := fmt.Sprintf(
-    "From: %s\r\n"+
-        "To: %s\r\n"+
-        "Subject: You're invited to EnderTex\r\n"+
-        "MIME-Version: 1.0\r\n"+
-        "Content-Type: text/html; charset=UTF-8\r\n"+
-        "\r\n"+
-        "%s",
-    from.String(),
-    recipient,
-    body.String(),
+		"From: %s\r\n"+
+			"To: %s\r\n"+
+			"Subject: You're invited to EnderTex\r\n"+
+			"MIME-Version: 1.0\r\n"+
+			"Content-Type: text/html; charset=UTF-8\r\n"+
+			"\r\n"+
+			"%s",
+		from.String(),
+		recipient,
+		body.String(),
 	)
 
 	if _, err := writer.Write([]byte(message)); err != nil {

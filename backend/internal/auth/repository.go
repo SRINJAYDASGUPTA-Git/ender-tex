@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	
 
 	"github.com/google/uuid"
 )
@@ -317,7 +316,7 @@ func (r *Repository) AcceptNewUserInvitation(
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("create invited user: %w", err)
 	}
-	
+
 	_, err = tx.Exec(`
 		INSERT OR IGNORE INTO project_memberships (user_id, project_id, id)
 		VALUES (?, ?, ?)
@@ -329,7 +328,7 @@ func (r *Repository) AcceptNewUserInvitation(
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("create project membership: %w", err)
 	}
-	
+
 	result, err := tx.Exec(`
 		DELETE FROM invitations
 		WHERE id = ?
@@ -342,12 +341,12 @@ func (r *Repository) AcceptNewUserInvitation(
 	}
 
 	sessionID := uuid.NewString()
-	
+
 	sessionToken, err := generateToken()
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("generate session token: %w", err)
 	}
-	
+
 	session := &Session{
 		ID:        sessionID,
 		UserID:    user.ID,

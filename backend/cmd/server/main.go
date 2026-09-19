@@ -133,7 +133,7 @@ func main() {
 		projectService,
 		projectStorage,
 	)
-	
+
 	if err != nil {
 		log.Fatalf(
 			"collaboration server: %v",

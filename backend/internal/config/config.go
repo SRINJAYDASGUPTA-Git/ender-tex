@@ -47,9 +47,9 @@ func Load() Config {
 	}
 
 	collabTokenSecret := os.Getenv("COLLAB_TOKEN_SECRET")
-	
+
 	if collabTokenSecret == "" {
-    	collabTokenSecret = "development-only-change-this-secret"
+		collabTokenSecret = "development-only-change-this-secret"
 	}
 
 	return Config{

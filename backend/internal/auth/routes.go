@@ -9,7 +9,7 @@ func RegisterRoutes(
 	mux.HandleFunc("/api/auth/login", handler.Login)
 	mux.HandleFunc("/api/auth/logout", handler.Logout)
 	mux.HandleFunc("/api/auth/me", handler.Me)
-	
+
 	mux.Handle(
 		"/api/admin/invitations",
 		handler.requireAdmin(

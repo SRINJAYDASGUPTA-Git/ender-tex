@@ -29,12 +29,12 @@ type Session struct {
 }
 
 type Invitation struct {
-    ID           string    `json:"id"`
-    Name         string    `json:"name"`
-    Email        string    `json:"email"`
-    Role         Role      `json:"role"`
-    ProjectID    string    `json:"project_id"`
-    ExistingUser bool      `json:"existing_user"`
-    ExpiresAt    time.Time `json:"expires_at"`
-    CreatedAt    time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	Role         Role      `json:"role"`
+	ProjectID    string    `json:"project_id"`
+	ExistingUser bool      `json:"existing_user"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	CreatedAt    time.Time `json:"created_at"`
 }
