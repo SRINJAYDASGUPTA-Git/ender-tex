@@ -60,7 +60,7 @@ export default function Home() {
   }, [user, userLoading]);
 
   const recentProjects = useMemo(() => {
-    return projects.slice(0, 6);
+    return Array.isArray(projects) ? projects.slice(0, 6) : [];
   }, [projects]);
 
   if (userLoading || !user) {
@@ -83,7 +83,7 @@ export default function Home() {
         {/* ───────────────── Header ───────────────── */}
 
         <section className="relative overflow-hidden rounded-2xl border bg-card">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-br from-primary/8 via-transparent to-transparent" />
 
           <div className="relative flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
             <div>
