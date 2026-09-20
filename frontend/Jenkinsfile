@@ -12,11 +12,11 @@ pipeline {
         // Production
         CONTAINER_NAME = "ender-tex-frontend"
         CONTAINER_PORT = "3000"
-        HOST_PORT = "3000"
+        HOST_PORT = "3002"
 
         // Temporary E2E deployment
 //        TEST_CONTAINER_NAME = "ender-does-frontend-test"
-//        TEST_HOST_PORT = "3002"
+//        TEST_HOST_PORT = "3001"
 
         DEPLOY_HOST = '172.17.0.1'
 
