@@ -353,7 +353,7 @@ pipeline {
                         ssh -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
                             "$SSH_USER@${DEPLOY_HOST}" \
-                            "sudo -n /usr/local/bin/deploy-subdomain frontend ender-tex 3000"
+                            "sudo -n /usr/local/bin/deploy-subdomain frontend ender-tex 3002"
 
                         echo "Cleaning unused Docker images..."
 
