@@ -32,13 +32,13 @@ pipeline {
             }
         }
 
-        stage("Install Dependencies") {
-            steps {
-                dir("frontend") {
-                    sh "npm ci"
-                }
-            }
-        }
+//        stage("Install Dependencies") {
+//            steps {
+//                dir("frontend") {
+//                    sh "npm ci"
+//                }
+//            }
+//        }
 
 //        stage("Install Playwright Browser") {
 //            steps {
@@ -48,25 +48,39 @@ pipeline {
 //            }
 //        }
 
-        stage("Build") {
-            steps {
-                dir("frontend") {
-                    sh "npm run build"
-                }
-            }
-        }
+//        stage("Build") {
+//            steps {
+//                dir("frontend") {
+//                    sh "npm run build"
+//                }
+//            }
+//        }
 
-        stage("Build Docker Image") {
+        stage("Build & Push Docker Image") {
             steps {
-                dir("frontend") {
-                    sh """
-                        docker build \
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            -u "$DOCKER_USER" \
+                            --password-stdin
+
+                        docker buildx build \
+                            --push \
+                            --progress=plain \
                             --build-arg BACKEND_URL=https://api-paper.srinjaydg.in \
                             --build-arg NEXT_PUBLIC_WS_URL=wss://ender-tex.srinjaydg.in \
-                            -t ${IMAGE_NAME}:${BUILD_NUMBER} \
-                            -t ${IMAGE_NAME}:latest \
+                            -t "$IMAGE_NAME:$BUILD_NUMBER" \
+                            -t "$IMAGE_NAME:latest" \
                             .
-                    """
+
+                        docker logout
+                    '''
                 }
             }
         }
@@ -212,41 +226,6 @@ pipeline {
 
         /*
          * ---------------------------------------------------------
-         * DOCKER HUB
-         * ---------------------------------------------------------
-         *
-         * Image is pushed only after E2E tests pass.
-         */
-
-        stage("Push Docker Image") {
-
-            steps {
-
-                withCredentials([
-                        usernamePassword(
-                            credentialsId: 'dockerhub-credentials',
-                            usernameVariable: 'DOCKER_USER',
-                            passwordVariable: 'DOCKER_PASSWORD'
-                        )
-                    ]) {
-
-                    sh '''
-                        echo "$DOCKER_PASSWORD" | docker login \
-                            -u "$DOCKER_USER" \
-                            --password-stdin
-
-                        docker push "$IMAGE_NAME:$BUILD_NUMBER"
-
-                        docker push "$IMAGE_NAME:latest"
-
-                        docker logout
-                    '''
-                }
-            }
-        }
-
-        /*
-         * ---------------------------------------------------------
          * PRODUCTION DEPLOYMENT
          * ---------------------------------------------------------
          *
@@ -256,18 +235,6 @@ pipeline {
         stage("Deploy Container") {
 
             steps {
-
-                withCredentials([
-                        string(
-                            credentialsId: 'imgbb-api-key',
-                            variable: 'IMGBB_API_KEY'
-                        ),
-                        string(
-                            credentialsId: 'enderdoes-test-user-password',
-                            variable: 'TEST_USER_PASSWORD'
-                        )
-                    ]) {
-
                     sh '''
                         echo "Deploying production frontend..."
 
@@ -284,7 +251,6 @@ pipeline {
 
                         echo "Production container started."
                     '''
-                }
             }
 
             post {
