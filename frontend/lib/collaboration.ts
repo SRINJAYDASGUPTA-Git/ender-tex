@@ -98,9 +98,11 @@ export async function connectCollaborativeEditor(
 
     // Ensure this points to the Next.js proxy if you used the Next.js rewrite fix
     const websocketBase = process.env.NEXT_PUBLIC_WS_URL ??
-        (typeof window !== "undefined" ? `ws://${window.location.host}` : "ws://localhost:3000");
-    const websocketServer = `${websocketBase.replace(/\/$/, "")}/api/yjs`;
+        (typeof window !== "undefined"
+            ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`
+            : "ws://localhost:3000");
 
+    const websocketServer = `${websocketBase.replace(/\/$/, "")}/api/yjs`;
     console.log(websocketServer);
 
     const doc = new Y.Doc();
