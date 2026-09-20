@@ -277,6 +277,7 @@ pipeline {
                             -p "$HOST_PORT:$CONTAINER_PORT" \
                             -e NODE_ENV=production \
                             -e BACKEND_URL=https://api-paper.srinjaydg.in \
+                            -e NEXT_PUBLIC_WS_URL=wss://ender-tex.srinjaydg.in \
                             "$IMAGE_NAME:$BUILD_NUMBER"
 
                         echo "Production container started."
