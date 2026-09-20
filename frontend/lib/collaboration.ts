@@ -101,6 +101,8 @@ export async function connectCollaborativeEditor(
         (typeof window !== "undefined" ? `ws://${window.location.host}` : "ws://localhost:3000");
     const websocketServer = `${websocketBase.replace(/\/$/, "")}/api/yjs`;
 
+    console.log(websocketServer);
+
     const doc = new Y.Doc();
     const text = doc.getText("content");
 

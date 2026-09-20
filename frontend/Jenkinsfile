@@ -61,6 +61,8 @@ pipeline {
                 dir("frontend") {
                     sh """
                         docker build \
+                            --build-arg BACKEND_URL=https://api-paper.srinjaydg.in \
+                            --build-arg NEXT_PUBLIC_WS_URL=wss://ender-tex.srinjaydg.in \
                             -t ${IMAGE_NAME}:${BUILD_NUMBER} \
                             -t ${IMAGE_NAME}:latest \
                             .
