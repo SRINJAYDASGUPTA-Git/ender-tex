@@ -77,6 +77,8 @@ export default function Home() {
     );
   }
 
+  const projectCount = Array.isArray(projects) ? projects.length : 0;
+
   return (
       <div className="mx-auto w-full max-w-7xl space-y-8 p-6 lg:p-8">
 
@@ -118,11 +120,11 @@ export default function Home() {
 
               <div>
                 <p className="text-2xl font-semibold">
-                  {projectsLoading ? "—" : projects.length}
+                  {projectsLoading ? "—" : projectCount}
                 </p>
 
                 <p className="text-sm text-muted-foreground">
-                  {projects.length === 1 ? "Project" : "Projects"}
+                  {projectCount === 1 ? "Project" : "Projects"}
                 </p>
               </div>
             </CardContent>
@@ -136,7 +138,7 @@ export default function Home() {
 
               <div>
                 <p className="text-2xl font-semibold">
-                  {projectsLoading ? "—" : projects.length}
+                  {projectsLoading ? "—" : projectCount}
                 </p>
 
                 <p className="text-sm text-muted-foreground">
@@ -199,7 +201,7 @@ export default function Home() {
               </p>
             </div>
 
-            {projects.length > 0 && (
+            {projectCount > 0 && (
                 <Button
                     variant="ghost"
                     className="gap-2"
@@ -223,7 +225,7 @@ export default function Home() {
                     </Card>
                 ))}
               </div>
-          ) : projects.length === 0 ? (
+          ) : projectCount === 0 ? (
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
                   <div className="mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10">
@@ -261,8 +263,8 @@ export default function Home() {
                           </div>
 
                           <span className="truncate">
-                                            {project.name}
-                                        </span>
+                                {project.name}
+                            </span>
 
                           <ArrowRight className="ml-auto size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                         </CardTitle>
@@ -274,18 +276,18 @@ export default function Home() {
                             <FileCode2 className="size-3.5" />
 
                             <span className="truncate">
-                                                {project.mainFile}
-                                            </span>
+                                    {project.mainFile}
+                                </span>
                           </div>
 
                           <div className="flex items-center gap-2">
-                                            <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
-                                                {project.engine}
-                                            </span>
+                                <span className="rounded-md bg-muted px-2 py-0.5 text-xs">
+                                    {project.engine}
+                                </span>
 
                             <span className="text-xs">
-                                                {project.bibliography}
-                                            </span>
+                                    {project.bibliography}
+                                </span>
                           </div>
                         </div>
                       </CardContent>
