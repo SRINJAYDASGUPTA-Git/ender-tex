@@ -276,7 +276,7 @@ pipeline {
                             --network apps \
                             -p "$HOST_PORT:$CONTAINER_PORT" \
                             -e NODE_ENV=production \
-                            -e BACKEND_URL=https://api-paper.srinjaydg.in
+                            -e BACKEND_URL=https://api-paper.srinjaydg.in \
                             "$IMAGE_NAME:$BUILD_NUMBER"
 
                         echo "Production container started."
