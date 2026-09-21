@@ -184,7 +184,7 @@ export function CreateProjectDialog() {
                         <Label>Bibliography backend</Label>
 
                         <Select
-                            value={engine}
+                            value={bibliography}
                             onValueChange={(value) => {
                                 if (value !== null) {
                                     setBibliography(value);

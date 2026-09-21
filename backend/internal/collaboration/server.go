@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	ycrdt "github.com/reearth/ygo/crdt"
 	yws "github.com/reearth/ygo/provider/websocket"
@@ -58,6 +59,7 @@ func NewServer(
 	ygoServer.MaxPeersPerRoom = 20
 	ygoServer.MaxConnections = 200
 	ygoServer.AwarenessExpiry = 30_000_000_000 // 30 seconds
+	ygoServer.RoomIdleTimeout = 5 * time.Minute
 
 	ygoServer.Authorize = server.authorize
 	ygoServer.OnLoadDocument = server.loadDocument
