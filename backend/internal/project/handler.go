@@ -318,8 +318,8 @@ func (h *Handler) Compile(
 	}
 
 	buildDir, err := os.MkdirTemp(
-		"",
-		"endertex-build-*",
+	    h.storage.root,
+	    "endertex-build-*",
 	)
 	if err != nil {
 		writeJSON(
