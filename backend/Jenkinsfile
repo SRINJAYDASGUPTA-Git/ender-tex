@@ -42,6 +42,8 @@ pipeline {
                     ]) {
                         sh '''
                             docker buildx build \
+                                --push \
+                                --progress=plain \
                                 -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
                                 -t ${DOCKER_IMAGE}:latest \
                                 .
