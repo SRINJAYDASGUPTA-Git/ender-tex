@@ -30,7 +30,7 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
+        stage('Docker Build & Push to Docker Hub') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -41,6 +41,10 @@ pipeline {
                 ]) {
                     dir('backend') {
                         sh '''
+                            echo "$DOCKER_PASSWORD" | docker login \
+                                -u "$DOCKER_USER" \
+                                --password-stdin
+                            
                             docker buildx build \
                                 --push \
                                 --progress=plain \
