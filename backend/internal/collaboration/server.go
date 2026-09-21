@@ -58,7 +58,7 @@ func NewServer(
 
 	ygoServer.MaxPeersPerRoom = 20
 	ygoServer.MaxConnections = 200
-	ygoServer.AwarenessExpiry = 30_000_000_000 // 30 seconds
+	ygoServer.AwarenessExpiry = 30 * time.Second
 	ygoServer.RoomIdleTimeout = 5 * time.Minute
 
 	ygoServer.Authorize = server.authorize
