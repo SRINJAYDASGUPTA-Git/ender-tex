@@ -1,16 +1,8 @@
 "use client";
 
-import {
-    useCallback,
-    useEffect,
-    useRef,
-    useState,
-} from "react";
+import {useCallback, useEffect, useRef, useState,} from "react";
 
-import {
-    PanelLeft,
-    PanelLeftClose,
-} from "lucide-react";
+import {PanelLeft,} from "lucide-react";
 import {pdfjs} from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -48,8 +40,6 @@ export function ProjectEditor() {
     const [saving, setSaving] = useState(false);
     const [pdfVersion, setPdfVersion] = useState(0);
     const [compiling, setCompiling] = useState(false);
-    const [sidebarWidth, setSidebarWidth] = useState(256);
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [resizingSidebar, setResizingSidebar] = useState(false);
     const editorContainerRef = useRef<HTMLDivElement>(null);
 
@@ -80,6 +70,51 @@ export function ProjectEditor() {
         }
     }, [params.id]);
 
+    const getInitialSidebarWidth = () => {
+        if (typeof window === "undefined") {
+            return 256;
+        }
+
+        const storedWidth = localStorage.getItem(
+            "endertex-sidebar-width"
+        );
+
+        if (!storedWidth) {
+            return 256;
+        }
+
+        const width = Number(storedWidth);
+
+        if (
+            Number.isFinite(width) &&
+            width >= 200 &&
+            width <= 500
+        ) {
+            return width;
+        }
+
+        return 256;
+    };
+
+    const getInitialSidebarCollapsed = () => {
+        if (typeof window === "undefined") {
+            return false;
+        }
+
+        return (
+            localStorage.getItem(
+                "endertex-sidebar-collapsed"
+            ) === "true"
+        );
+    };
+
+    const [sidebarWidth, setSidebarWidth] = useState(
+        getInitialSidebarWidth
+    );
+
+    const [sidebarCollapsed, setSidebarCollapsed] =
+        useState(getInitialSidebarCollapsed);
+
     useEffect(() => {
         const loadProject = async () => {
             try {
@@ -103,33 +138,6 @@ export function ProjectEditor() {
 
         loadProject();
     }, [params.id, openFile]);
-    useEffect(() => {
-        const storedWidth = localStorage.getItem(
-            "endertex-sidebar-width"
-        );
-
-        const storedCollapsed = localStorage.getItem(
-            "endertex-sidebar-collapsed"
-        );
-
-        if (storedWidth) {
-            const width = Number(storedWidth);
-
-            if (
-                Number.isFinite(width) &&
-                width >= 200 &&
-                width <= 500
-            ) {
-                setSidebarWidth(width);
-            }
-        }
-
-        if (storedCollapsed !== null) {
-            setSidebarCollapsed(
-                storedCollapsed === "true"
-            );
-        }
-    }, []);
 
     useEffect(() => {
         localStorage.setItem(
@@ -339,7 +347,7 @@ export function ProjectEditor() {
     return (
         <div
             data-project-editor
-            className="flex h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-lg border"
+            className="flex h-[90vh] flex-col overflow-hidden rounded-lg border"
         >
             <ProjectToolbar project={project} />
 
