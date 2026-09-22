@@ -3,8 +3,9 @@ package config_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"paper-server/internal/config"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLoad_Defaults(t *testing.T) {
@@ -20,7 +21,7 @@ func TestLoad_Defaults(t *testing.T) {
 	cfg := config.Load()
 
 	// Assert
-	assert.Equal(t, "127.0.0.1", cfg.Host)
+	assert.Equal(t, "0.0.0.0", cfg.Host)
 	assert.Equal(t, "8080", cfg.Port)
 	assert.Equal(t, "./data", cfg.DataDir)
 	assert.Equal(t, "texlive/texlive", cfg.LatexImage)
