@@ -244,20 +244,73 @@ export function ProjectEditor() {
         try {
             setCompiling(true);
 
-            const response = await axios.post(
+            const response = await axios.post<{
+                jobId: string;
+                projectId: string;
+                status: "queued" | "running";
+            }>(
                 `/projects/${params.id}/compile`
             );
 
-            if (!response.data.success) {
-                toast.error("Compilation failed.");
-                return;
-            }
+            const {jobId} = response.data;
 
-            setPdfVersion(Date.now());
-            toast.success("Project compiled successfully.");
+            while (true) {
+                const statusResponse = await axios.get<{
+                    jobId: string;
+                    projectId: string;
+                    status:
+                        | "queued"
+                        | "running"
+                        | "succeeded"
+                        | "failed";
+                    success: boolean;
+                    log: string;
+                    pdfAvailable: boolean;
+                    startedAt?: string;
+                    finishedAt?: string;
+                }>(
+                    `/projects/${params.id}/compile/${jobId}`
+                );
+
+                const job = statusResponse.data;
+
+                if (
+                    job.status === "succeeded"
+                ) {
+                    setPdfVersion(Date.now());
+
+                    toast.success(
+                        "Project compiled successfully."
+                    );
+
+                    break;
+                }
+
+                if (
+                    job.status === "failed"
+                ) {
+                    console.error(
+                        "LaTeX compilation failed:",
+                        job.log
+                    );
+
+                    toast.error(
+                        "Compilation failed. Check the compilation log."
+                    );
+
+                    break;
+                }
+
+                await new Promise((resolve) =>
+                    setTimeout(resolve, 1000)
+                );
+            }
         } catch (error) {
             console.error(error);
-            toast.error("Compilation failed.");
+
+            toast.error(
+                "Failed to start compilation."
+            );
         } finally {
             setCompiling(false);
         }
@@ -354,6 +407,7 @@ export function ProjectEditor() {
                                         collaborative
                                         value={file.content}
                                         fileName={file.path}
+                                        compiling={compiling}
                                         onCompile={compileProject}
                                         onSave={saveFile}
                                         dirty={fileDirty}

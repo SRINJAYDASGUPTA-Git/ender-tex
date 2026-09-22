@@ -70,7 +70,8 @@ func main() {
 	}
 
 	authRepository := auth.NewRepository(db)
-	authService := auth.NewService(authRepository, projectRepository, emailService, cfg.AppURL)
+	fmt.Println("cookieSecure:", cfg.CookieSecure)
+	authService := auth.NewService(authRepository, projectRepository, emailService, cfg.AppURL, cfg.CookieSecure)
 
 	if len(os.Args) > 1 && os.Args[1] == "--create-admin" {
 		if err := createAdmin(authService); err != nil {

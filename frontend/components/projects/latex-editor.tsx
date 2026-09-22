@@ -41,6 +41,7 @@ interface LatexEditorProps {
         content: string,
         local: boolean
     ) => void;
+    compiling?: boolean;
     dirty?: boolean;
     saving?: boolean;
     readOnly?: boolean;
@@ -65,6 +66,7 @@ export function LatexEditor({
                                 onSave,
                                 projectId,
                                 onCollaborativeContentChange,
+                                compiling = false,
                                 collaborative = false,
                                 dirty = false,
                                 saving = false,
@@ -97,6 +99,8 @@ export function LatexEditor({
     const [activeUsers, setActiveUsers] =
         useState<ActiveUser[]>([]);
 
+    const compilingRef = useRef(compiling);
+
     /*
      * Keep callback refs current.
      */
@@ -107,6 +111,10 @@ export function LatexEditor({
     useEffect(() => {
         compileRef.current = onCompile;
     }, [onCompile]);
+
+    useEffect(() => {
+        compilingRef.current = compiling;
+    }, [compiling]);
 
     useEffect(() => {
         valueRef.current = value;
@@ -523,7 +531,9 @@ export function LatexEditor({
                 browserEvent.preventDefault();
                 browserEvent.stopPropagation();
 
-                compileRef.current();
+                if (!compilingRef.current) {
+                    compileRef.current();
+                }
             }
         });
 
@@ -669,19 +679,21 @@ export function LatexEditor({
                         size="sm"
                         className="h-7 p-4"
                         onClick={onCompile}
-                        disabled={readOnly}
+                        disabled={readOnly || compiling}
                         variant="outline"
                     >
                         <Play className="mr-1.5 h-3.5 w-3.5" />
 
-                        Compile
+                        {compiling ? "Compiling..." : "Compile"}
 
-                        <Kbd
-                            data-icon="inline-end"
-                            className="translate-x-0.5"
-                        >
-                            Ctrl + ⏎
-                        </Kbd>
+                        {!compiling && (
+                            <Kbd
+                                data-icon="inline-end"
+                                className="translate-x-0.5"
+                            >
+                                Ctrl + ⏎
+                            </Kbd>
+                        )}
                     </Button>
                 </div>
             </div>

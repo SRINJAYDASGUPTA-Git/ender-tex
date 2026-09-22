@@ -15,6 +15,10 @@ func (c *Compiler) compileDocker(
 	engine string,
 	mainFile string,
 ) (*Result, error) {
+	absoluteBuildDir, err := filepath.Abs(buildDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve build directory: %w", err)
+	}
 	args := []string{
 		"run",
 		"--rm",
@@ -25,7 +29,7 @@ func (c *Compiler) compileDocker(
 
 		// Mount the disposable build directory.
 		"-v",
-		fmt.Sprintf("%s:/workdir", buildDir),
+		fmt.Sprintf("%s:/workdir", absoluteBuildDir),
 
 		// Work inside the mounted directory.
 		"-w",
@@ -72,7 +76,7 @@ func (c *Compiler) compileDocker(
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err = cmd.Run()
 
 	log := stdout.String() + stderr.String()
 

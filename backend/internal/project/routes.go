@@ -86,6 +86,8 @@ func RegisterRoutes(
 					} else {
 						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 					}
+				case strings.Contains(r.URL.Path, "/compile/"):
+					handler.CompileStatus(w, r)
 				case strings.HasSuffix(r.URL.Path, "/compile"):
 					handler.Compile(w, r)
 				case strings.HasSuffix(r.URL.Path, "/pdf"):

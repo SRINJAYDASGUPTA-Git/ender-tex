@@ -89,7 +89,7 @@ func TestCoverage_DatabaseAndServiceErrors(t *testing.T) {
 
 	t.Run("email sending failure", func(t *testing.T) {
 		checker := &testProjectChecker{projects: map[string]string{"project-1": "P1"}}
-		failSvc := NewService(repo, checker, &failEmailService{}, "http://localhost")
+		failSvc := NewService(repo, checker, &failEmailService{}, "http://localhost", false)
 		_, _, err := failSvc.CreateInvitation("t@t.com", "T", RoleCollaborator, "project-1")
 		if err == nil || err.Error() != "simulated email network error" {
 			t.Fatalf("expected email sending error, got %v", err)

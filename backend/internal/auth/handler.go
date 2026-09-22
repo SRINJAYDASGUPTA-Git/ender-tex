@@ -4,6 +4,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -68,7 +69,6 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-
 	user, err := h.service.Authenticate(req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredentials) {
@@ -86,12 +86,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println("cookieSecure:", h.service.cookieSecure)
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true, // HTTPS will be enabled in production.
+		Secure:   h.service.cookieSecure, // HTTPS will be enabled in production.
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionDuration.Seconds()),
 	})
@@ -123,7 +125,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   h.service.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 		Expires:  time.Unix(1, 0),
@@ -279,7 +281,7 @@ func (h *Handler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 			Value:    acceptance.SessionToken,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   true, // true in production HTTPS
+			Secure:   h.service.cookieSecure, // true in production HTTPS
 			SameSite: http.SameSiteLaxMode,
 			Expires:  acceptance.Session.ExpiresAt,
 		})

@@ -88,6 +88,7 @@ func newTestService(t *testing.T) (*Service, *Repository, *sql.DB) {
 		checker,
 		emailSender,
 		"http://localhost:3000",
+		false,
 	)
 
 	return service, repository, db

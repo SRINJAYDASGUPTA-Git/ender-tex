@@ -27,12 +27,17 @@ func NewStorage(root string) (*Storage, error) {
 		return nil, errors.New("storage root cannot be empty")
 	}
 
-	if err := os.MkdirAll(root, 0755); err != nil {
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("resolve storage root: %w", err)
+	}
+
+	if err := os.MkdirAll(absoluteRoot, 0755); err != nil {
 		return nil, fmt.Errorf("create storage root: %w", err)
 	}
 
 	return &Storage{
-		root: root,
+		root: absoluteRoot,
 	}, nil
 }
 
@@ -188,6 +193,10 @@ func (s *Storage) ListFiles(projectID string) ([]FileEntry, error) {
 			return err
 		}
 
+		if !info.IsDir() && isGeneratedArtifact(relativePath) {
+			return nil
+		}
+
 		entryType := "file"
 		if info.IsDir() {
 			entryType = "directory"
@@ -211,6 +220,50 @@ func (s *Storage) ListFiles(projectID string) ([]FileEntry, error) {
 	}
 
 	return entries, nil
+}
+
+var generatedArtifactSuffixes = []string{
+	".aux",
+	".bbl",
+	".bcf",
+	".blg",
+	".fdb_latexmk",
+	".fls",
+	".log",
+	".out",
+	".run.xml",
+	".synctex",
+	".synctex.gz",
+	".toc",
+	".lof",
+	".lot",
+	".nav",
+	".snm",
+	".vrb",
+	".xdv",
+	".idx",
+	".ilg",
+	".ind",
+	".acn",
+	".acr",
+	".alg",
+	".glg",
+	".glo",
+	".gls",
+	".ist",
+	".pdf",
+}
+
+func isGeneratedArtifact(path string) bool {
+	lower := strings.ToLower(filepath.ToSlash(path))
+
+	for _, suffix := range generatedArtifactSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *Storage) ReadFile(projectID, filePath string) ([]byte, error) {

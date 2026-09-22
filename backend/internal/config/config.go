@@ -6,6 +6,8 @@ type Config struct {
 	Host       string
 	Port       string
 	DataDir    string
+	CookieSecure bool
+	
 	LatexImage string
 
 	SMTPHost     string
@@ -22,7 +24,7 @@ type Config struct {
 func Load() Config {
 	host := os.Getenv("PAPER_SERVER_HOST")
 	if host == "" {
-		host = "127.0.0.1"
+		host = "0.0.0.0"
 	}
 
 	port := os.Getenv("PAPER_SERVER_PORT")
@@ -52,10 +54,14 @@ func Load() Config {
 		collabTokenSecret = "development-only-change-this-secret"
 	}
 
+	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
+	
+
 	return Config{
 		Host:       host,
 		Port:       port,
 		DataDir:    dataDir,
+		CookieSecure: cookieSecure,
 		LatexImage: latexImage,
 
 		SMTPHost:     os.Getenv("SMTP_HOST"),

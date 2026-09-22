@@ -44,6 +44,7 @@ type Service struct {
 	checker     ProjectChecker
 	emailSender email.Service
 	appURL      string
+	cookieSecure bool
 }
 
 func NewService(
@@ -51,12 +52,14 @@ func NewService(
 	checker ProjectChecker,
 	emailSender email.Service,
 	appURL string,
+	cookieSecure bool,
 ) *Service {
 	return &Service{
 		repository:  repository,
 		checker:     checker,
 		emailSender: emailSender,
 		appURL:      appURL,
+		cookieSecure: cookieSecure,
 	}
 }
 func (s *Service) CreateUser(

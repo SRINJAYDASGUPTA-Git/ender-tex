@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
         );
 
         const setCookie = backendResponse.headers.get("set-cookie");
+        console.log(setCookie)
 
         if (setCookie) {
             response.headers.set("set-cookie", setCookie);

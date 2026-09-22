@@ -14,9 +14,10 @@ import (
 )
 
 type Handler struct {
-	service  *Service
-	storage  *Storage
-	compiler *compiler.Service
+	service     *Service
+	storage     *Storage
+	compiler    *compiler.Service
+	compileJobs *CompileJobManager
 }
 
 type RenameProjectRequest struct {
@@ -33,9 +34,10 @@ func NewHandler(
 	compilerService *compiler.Service,
 ) *Handler {
 	return &Handler{
-		service:  service,
-		storage:  storage,
-		compiler: compilerService,
+		service:     service,
+		storage:     storage,
+		compiler:    compilerService,
+		compileJobs: NewCompileJobManager(),
 	}
 }
 
@@ -268,12 +270,12 @@ func (h *Handler) File(w http.ResponseWriter, r *http.Request) {
 //	@Tags			Compilation
 //	@Produce		json
 //	@Param			projectId	path		string	true	"Project ID"
-//	@Success		200			{object}	compiler.Result
+//	@Success		202			{object}	CompileJob
 //	@Failure		400			{string}	string	"Invalid project path"
 //	@Failure		401			{string}	string	"Unauthorized"
 //	@Failure		403			{object}	map[string]string
 //	@Failure		404			{object}	map[string]string
-//	@Failure		500			{object}	map[string]string	"Compilation or server error"
+//	@Failure		409			{object}	map[string]string	"Compilation already running"
 //	@Router			/projects/{projectId}/compile [post]
 func (h *Handler) Compile(
 	w http.ResponseWriter,
@@ -317,26 +319,15 @@ func (h *Handler) Compile(
 		return
 	}
 
-	buildDir, err := os.MkdirTemp(
-	    h.storage.root,
-	    "endertex-build-*",
-	)
+	job, err := h.compileJobs.Start(projectID)
 	if err != nil {
-		writeJSON(
-			w,
-			http.StatusInternalServerError,
-			map[string]string{
-				"message": "Failed to create build workspace.",
-			},
-		)
-		return
-	}
-	defer os.RemoveAll(buildDir)
+		if errors.Is(err, ErrCompileAlreadyRunning) {
+			writeJSON(w, http.StatusConflict, map[string]string{
+				"message": "A compilation is already running for this project.",
+			})
+			return
+		}
 
-	if err := h.storage.CopyProjectTo(
-		projectID,
-		buildDir,
-	); err != nil {
 		writeJSON(
 			w,
 			http.StatusInternalServerError,
@@ -347,51 +338,62 @@ func (h *Handler) Compile(
 		return
 	}
 
-	result, err := h.compiler.Compile(
-		r.Context(),
-		buildDir,
+	go h.runCompileJob(
+		job.ID,
+		projectID,
 		p.Engine,
 		p.MainFile,
 	)
-	if err != nil {
-		writeJSON(
-			w,
-			http.StatusInternalServerError,
-			map[string]string{
-				"message": err.Error(),
-			},
-		)
+
+	writeJSON(w, http.StatusAccepted, job)
+}
+
+// CompileStatus returns the current status of a compilation job.
+//
+//	@Summary		Get compilation status
+//	@Description	Returns the status and result of an asynchronous project compilation job.
+//	@Tags			Compilation
+//	@Produce		json
+//	@Param			projectId	path		string	true	"Project ID"
+//	@Param			jobId		path		string	true	"Compilation job ID"
+//	@Success		200			{object}	CompileJob
+//	@Failure		400			{string}	string	"Invalid compilation path"
+//	@Failure		401			{string}	string	"Unauthorized"
+//	@Failure		403			{object}	map[string]string
+//	@Failure		404			{object}	map[string]string
+//	@Router			/projects/{projectId}/compile/{jobId} [get]
+func (h *Handler) CompileStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	if result.Success {
-		currentPDF := filepath.Join(
-			h.storage.ProjectPath(projectID),
-			"current.pdf",
-		)
-
-		if err := copyFile(
-			result.PDFPath,
-			currentPDF,
-		); err != nil {
-			writeJSON(
-				w,
-				http.StatusInternalServerError,
-				map[string]string{
-					"message": "Failed to save compiled PDF.",
-				},
-			)
-			return
-		}
+	projectID, jobID, ok := compileJobFromPath(r.URL.Path)
+	if !ok {
+		http.Error(w, "invalid compilation path", http.StatusBadRequest)
+		return
 	}
 
-	result.PDFPath = ""
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-	writeJSON(
-		w,
-		http.StatusOK,
-		result,
-	)
+	if _, err := h.service.GetForUser(projectID, userID); err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	job, ok := h.compileJobs.Get(jobID)
+	if !ok || job.ProjectID != projectID {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"message": "Compilation job not found.",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, job)
 }
 
 // PDF returns the latest compiled PDF for a project.
@@ -1205,6 +1207,23 @@ func projectFileFromPath(path string) (string, string, bool) {
 	}
 
 	return parts[0], parts[1], true
+}
+
+func compileJobFromPath(path string) (string, string, bool) {
+	const prefix = "/api/projects/"
+
+	if !strings.HasPrefix(path, prefix) {
+		return "", "", false
+	}
+
+	rest := strings.TrimPrefix(path, prefix)
+	parts := strings.Split(rest, "/")
+
+	if len(parts) != 3 || parts[0] == "" || parts[1] != "compile" || parts[2] == "" {
+		return "", "", false
+	}
+
+	return parts[0], parts[2], true
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
