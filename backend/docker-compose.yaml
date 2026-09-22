@@ -13,7 +13,7 @@ services:
       # Allow the Go app to spawn TeX Docker containers on the host
       - /var/run/docker.sock:/var/run/docker.sock
       # Persist SQLite DB and TeX project files
-      - ./data:/app/data
+      - /srv/ender-tex-backend/data:/srv/ender-tex-backend/data
 
     restart: unless-stopped
 
