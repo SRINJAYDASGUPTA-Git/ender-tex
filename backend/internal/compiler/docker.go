@@ -59,6 +59,7 @@ func (c *Compiler) compileDocker(
 
 	args = append(
 		args,
+		"-latexoption=\"-synctex=1\"",
 		"-interaction=nonstopmode",
 		"-halt-on-error",
 		mainFile,

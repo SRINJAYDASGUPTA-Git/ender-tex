@@ -53,3 +53,39 @@ func (s *Service) Compile(
 
 	return result, nil
 }
+
+func (s *Service) SyncTeXView(
+	ctx context.Context,
+	projectDir string,
+	mainFile string,
+	file string,
+	line int,
+	column int,
+) (*SyncTeXViewResult, error) {
+	return s.compiler.SyncTeXView(
+		ctx,
+		projectDir,
+		mainFile,
+		file,
+		line,
+		column,
+	)
+}
+
+func (s *Service) SyncTeXEdit(
+	ctx context.Context,
+	projectDir string,
+	mainFile string,
+	page int,
+	x float64,
+	y float64,
+) (*SyncTeXEditResult, error) {
+	return s.compiler.SyncTeXEdit(
+		ctx,
+		projectDir,
+		mainFile,
+		page,
+		x,
+		y,
+	)
+}
