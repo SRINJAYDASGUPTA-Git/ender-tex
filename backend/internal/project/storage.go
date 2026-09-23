@@ -251,11 +251,14 @@ var generatedArtifactSuffixes = []string{
 	".glo",
 	".gls",
 	".ist",
-	".pdf",
 }
 
 func isGeneratedArtifact(path string) bool {
 	lower := strings.ToLower(filepath.ToSlash(path))
+
+	if lower == "current.pdf" {
+		return true
+	}
 
 	for _, suffix := range generatedArtifactSuffixes {
 		if strings.HasSuffix(lower, suffix) {

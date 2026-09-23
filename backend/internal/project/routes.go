@@ -86,12 +86,39 @@ func RegisterRoutes(
 					} else {
 						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 					}
+				case strings.HasSuffix(
+					r.URL.Path,
+					"/synctex/source",
+				):
+					handler.SyncTeXSource(w, r)
+
+				case strings.HasSuffix(
+					r.URL.Path,
+					"/synctex/pdf",
+				):
+					handler.SyncTeXPDF(w, r)
+
 				case strings.Contains(r.URL.Path, "/compile/"):
 					handler.CompileStatus(w, r)
+
 				case strings.HasSuffix(r.URL.Path, "/compile"):
 					handler.Compile(w, r)
+
+				case strings.HasSuffix(
+					r.URL.Path,
+					"/pdf/download",
+				):
+					handler.DownloadPDF(w, r)
+
 				case strings.HasSuffix(r.URL.Path, "/pdf"):
 					handler.PDF(w, r)
+
+				case strings.HasSuffix(
+					r.URL.Path,
+					"/export",
+				):
+					handler.Export(w, r)
+
 				case strings.HasSuffix(r.URL.Path, "/files"):
 					handler.Files(w, r)
 

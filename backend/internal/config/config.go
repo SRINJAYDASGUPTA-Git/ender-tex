@@ -3,11 +3,11 @@ package config
 import "os"
 
 type Config struct {
-	Host       string
-	Port       string
-	DataDir    string
+	Host         string
+	Port         string
+	DataDir      string
 	CookieSecure bool
-	
+
 	LatexImage string
 
 	SMTPHost     string
@@ -55,14 +55,13 @@ func Load() Config {
 	}
 
 	cookieSecure := os.Getenv("COOKIE_SECURE") == "true"
-	
 
 	return Config{
-		Host:       host,
-		Port:       port,
-		DataDir:    dataDir,
+		Host:         host,
+		Port:         port,
+		DataDir:      dataDir,
 		CookieSecure: cookieSecure,
-		LatexImage: latexImage,
+		LatexImage:   latexImage,
 
 		SMTPHost:     os.Getenv("SMTP_HOST"),
 		SMTPPort:     os.Getenv("SMTP_PORT"),

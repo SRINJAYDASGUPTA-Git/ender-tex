@@ -40,10 +40,10 @@ type InvitationAcceptance struct {
 	ProjectID    string
 }
 type Service struct {
-	repository  *Repository
-	checker     ProjectChecker
-	emailSender email.Service
-	appURL      string
+	repository   *Repository
+	checker      ProjectChecker
+	emailSender  email.Service
+	appURL       string
 	cookieSecure bool
 }
 
@@ -55,10 +55,10 @@ func NewService(
 	cookieSecure bool,
 ) *Service {
 	return &Service{
-		repository:  repository,
-		checker:     checker,
-		emailSender: emailSender,
-		appURL:      appURL,
+		repository:   repository,
+		checker:      checker,
+		emailSender:  emailSender,
+		appURL:       appURL,
 		cookieSecure: cookieSecure,
 	}
 }

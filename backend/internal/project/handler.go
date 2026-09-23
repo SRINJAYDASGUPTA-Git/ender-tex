@@ -1088,6 +1088,411 @@ func (h *Handler) RenameDirectory(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) SyncTeXSource(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(
+			w,
+			"invalid project path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(
+		r.Context(),
+	)
+	if !ok {
+		http.Error(
+			w,
+			"Unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	project, err := h.service.GetForUser(
+		projectID,
+		userID,
+	)
+	if err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	var request struct {
+		File   string `json:"file"`
+		Line   int    `json:"line"`
+		Column int    `json:"column"`
+	}
+
+	if err := json.NewDecoder(
+		r.Body,
+	).Decode(&request); err != nil {
+		http.Error(
+			w,
+			"invalid request body",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	result, err := h.compiler.SyncTeXView(
+		r.Context(),
+		h.storage.ProjectPath(projectID),
+		project.MainFile,
+		request.File,
+		request.Line,
+		request.Column,
+	)
+
+	if err != nil {
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{
+				"message": err.Error(),
+			},
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		http.StatusOK,
+		result,
+	)
+}
+
+func (h *Handler) SyncTeXPDF(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(
+			w,
+			"invalid project path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(
+		r.Context(),
+	)
+	if !ok {
+		http.Error(
+			w,
+			"Unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	project, err := h.service.GetForUser(
+		projectID,
+		userID,
+	)
+	if err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	var request struct {
+		Page int     `json:"page"`
+		X    float64 `json:"x"`
+		Y    float64 `json:"y"`
+	}
+
+	if err := json.NewDecoder(
+		r.Body,
+	).Decode(&request); err != nil {
+		http.Error(
+			w,
+			"invalid request body",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	result, err := h.compiler.SyncTeXEdit(
+		r.Context(),
+		h.storage.ProjectPath(projectID),
+		project.MainFile,
+		request.Page,
+		request.X,
+		request.Y,
+	)
+
+	if err != nil {
+		writeJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{
+				"message": err.Error(),
+			},
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		http.StatusOK,
+		result,
+	)
+}
+
+func (h *Handler) Export(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	projectID, ok := projectIDFromPath(r.URL.Path)
+
+	if !ok {
+		http.Error(
+			w,
+			"invalid project path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(
+		r.Context(),
+	)
+
+	if !ok {
+		http.Error(
+			w,
+			"Unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	project, err := h.service.GetForUser(
+		projectID,
+		userID,
+	)
+
+	if err != nil {
+		handleProjectAccessError(
+			w,
+			err,
+		)
+		return
+	}
+
+	includePDF := r.URL.Query().Get(
+		"includePdf",
+	) == "true"
+
+	filename := fmt.Sprintf(
+		"%s.zip",
+		sanitizeDownloadName(project.Name),
+	)
+
+	w.Header().Set(
+		"Content-Type",
+		"application/zip",
+	)
+
+	w.Header().Set(
+		"Content-Disposition",
+		fmt.Sprintf(
+			`attachment; filename="%s"`,
+			filename,
+		),
+	)
+
+	if err := h.storage.ExportProject(
+		projectID,
+		project.MainFile,
+		includePDF,
+		w,
+	); err != nil {
+		/*
+		 * At this point response headers may already have been sent,
+		 * so just log/report the error.
+		 */
+		http.Error(
+			w,
+			"failed to export project",
+			http.StatusInternalServerError,
+		)
+
+		return
+	}
+}
+
+func (h *Handler) DownloadPDF(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	projectID, ok := projectIDFromPath(r.URL.Path)
+	if !ok {
+		http.Error(
+			w,
+			"invalid project path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(
+			w,
+			"Unauthorized",
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	project, err := h.service.GetForUser(
+		projectID,
+		userID,
+	)
+	if err != nil {
+		handleProjectAccessError(w, err)
+		return
+	}
+
+	pdfPath := filepath.Join(
+		h.storage.ProjectPath(projectID),
+		"current.pdf",
+	)
+
+	if _, err := os.Stat(pdfPath); err != nil {
+		if os.IsNotExist(err) {
+			http.Error(
+				w,
+				"PDF not found. Compile the project first.",
+				http.StatusNotFound,
+			)
+			return
+		}
+
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	filename := pdfDownloadName(project.Name)
+
+	w.Header().Set(
+		"Content-Type",
+		"application/pdf",
+	)
+
+	w.Header().Set(
+		"Content-Disposition",
+		fmt.Sprintf(
+			`attachment; filename="%s"`,
+			filename,
+		),
+	)
+
+	w.Header().Set(
+		"Cache-Control",
+		"no-store",
+	)
+
+	http.ServeFile(w, r, pdfPath)
+}
+
+func pdfDownloadName(projectName string) string {
+	name := sanitizeDownloadName(projectName)
+
+	if name == "" {
+		name = "endertex-project"
+	}
+
+	return name + ".pdf"
+}
+
+func sanitizeDownloadName(name string) string {
+	name = strings.TrimSpace(name)
+
+	if name == "" {
+		return "endertex-project"
+	}
+
+	var builder strings.Builder
+
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			builder.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			builder.WriteRune(r)
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+		case r == '-' || r == '_' || r == ' ':
+			builder.WriteRune(r)
+		}
+	}
+
+	result := strings.TrimSpace(
+		builder.String(),
+	)
+
+	result = strings.ReplaceAll(
+		result,
+		" ",
+		"-",
+	)
+
+	if result == "" {
+		return "endertex-project"
+	}
+
+	return result
+}
+
 // ==============================
 // Helper Functions
 // ==============================
