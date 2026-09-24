@@ -41,6 +41,18 @@ pdfjs.GlobalWorkerOptions.workerSrc =
 interface PdfPreviewProps {
     projectId: string;
     version: number;
+    onSyncTeX?: (
+        page: number,
+        x: number,
+        y: number,
+    ) => void;
+    syncTeXTarget?: {
+        page: number;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    } | null;
 }
 
 interface SearchMatch {
@@ -243,6 +255,8 @@ function findMatchesInElement(
 export function PdfPreview({
                                projectId,
                                version,
+                               onSyncTeX,
+                               syncTeXTarget = null,
                            }: PdfPreviewProps) {
     const [numPages, setNumPages] =
         useState(0);
@@ -264,6 +278,15 @@ export function PdfPreview({
 
     const [highlights, setHighlights] =
         useState<SearchHighlight[]>([]);
+
+    const [syncTeXHighlight, setSyncTeXHighlight] =
+        useState<{
+            page: number;
+            left: number;
+            top: number;
+            width: number;
+            height: number;
+        } | null>(null);
 
     const [pdfAvailable, setPdfAvailable] =
         useState(false);
@@ -309,6 +332,7 @@ export function PdfPreview({
         setCurrentMatch(0);
         setMatches([]);
         setHighlights([]);
+        setSyncTeXHighlight(null);
     }, [pdfUrl]);
 
     /*
@@ -745,6 +769,133 @@ export function PdfPreview({
     ]);
 
     /*
+     * SyncTeX source → PDF.
+     *
+     * SyncTeX coordinates are in PDF points while React-PDF
+     * renders the page at `scale`, so convert them into the
+     * displayed page coordinates before drawing the overlay.
+     *
+     * The page may not exist in the DOM immediately after the
+     * target changes, so retry briefly until React-PDF has rendered it.
+     */
+    useEffect(() => {
+        const target = syncTeXTarget;
+        const container = pdfContainerRef.current;
+        const content = pdfContentRef.current;
+
+        if (
+            !target ||
+            !container ||
+            !content ||
+            !pdfAvailable
+        ) {
+            setSyncTeXHighlight(null);
+            return;
+        }
+
+        let cancelled = false;
+        let retryTimer: number | undefined;
+
+        const applyTarget = (attempt: number) => {
+            if (cancelled) {
+                return;
+            }
+
+            const pageElement =
+                content.querySelector<HTMLElement>(
+                    `[data-synctex-page="${target.page}"]`,
+                );
+
+            if (!pageElement) {
+                if (attempt < 40) {
+                    retryTimer = window.setTimeout(
+                        () => applyTarget(attempt + 1),
+                        50,
+                    );
+                }
+                return;
+            }
+
+            const pageRect =
+                pageElement.getBoundingClientRect();
+
+            const contentRect =
+                content.getBoundingClientRect();
+
+            const width = Math.max(
+                target.width * scale,
+                3,
+            );
+
+            const height = Math.max(
+                target.height * scale,
+                3,
+            );
+
+            const left =
+                pageRect.left -
+                contentRect.left +
+                target.x * scale;
+
+            const top =
+                pageRect.top -
+                contentRect.top +
+                target.y * scale;
+
+            const highlight = {
+                page: target.page,
+                left,
+                top,
+                width,
+                height,
+            };
+
+            setSyncTeXHighlight(highlight);
+
+            /*
+             * Keep the source location around the center of
+             * the visible PDF viewport.
+             */
+            const scrollTop =
+                top -
+                container.clientHeight / 2 +
+                height / 2;
+
+            const scrollLeft =
+                left -
+                container.clientWidth / 2 +
+                width / 2;
+
+            container.scrollTo({
+                top: Math.max(0, scrollTop),
+                left: Math.max(0, scrollLeft),
+                behavior: "smooth",
+            });
+        };
+
+        /*
+         * Let the current React-PDF render settle first.
+         */
+        retryTimer = window.setTimeout(
+            () => applyTarget(0),
+            0,
+        );
+
+        return () => {
+            cancelled = true;
+
+            if (retryTimer !== undefined) {
+                window.clearTimeout(retryTimer);
+            }
+        };
+    }, [
+        syncTeXTarget,
+        scale,
+        pdfAvailable,
+        numPages,
+    ]);
+
+    /*
      * Zoom controls.
      */
     const zoomIn = () => {
@@ -1113,7 +1264,40 @@ export function PdfPreview({
                                     return (
                                         <div
                                             key={`page-${pageNumber}`}
-                                            className="bg-white shadow-md"
+                                            data-synctex-page={
+                                                pageNumber
+                                            }
+                                            className={`bg-white shadow-md ${
+                                                onSyncTeX
+                                                    ? "cursor-crosshair"
+                                                    : ""
+                                            }`}
+                                            onClick={(
+                                                event,
+                                            ) => {
+                                                if (!onSyncTeX) {
+                                                    return;
+                                                }
+
+                                                const rect =
+                                                    event.currentTarget.getBoundingClientRect();
+
+                                                const x =
+                                                    (event.clientX -
+                                                        rect.left) /
+                                                    scale;
+
+                                                const y =
+                                                    (event.clientY -
+                                                        rect.top) /
+                                                    scale;
+
+                                                onSyncTeX(
+                                                    pageNumber,
+                                                    x,
+                                                    y,
+                                                );
+                                            }}
                                         >
                                             <Page
                                                 pageNumber={
@@ -1133,6 +1317,18 @@ export function PdfPreview({
                                 }
                             )}
                         </Document>
+
+                        {syncTeXHighlight && (
+                            <div
+                                className="pointer-events-none absolute z-40 rounded-sm bg-yellow-300/30 ring-2 ring-yellow-400 shadow-lg shadow-yellow-400/20"
+                                style={{
+                                    left: `${syncTeXHighlight.left}px`,
+                                    top: `${syncTeXHighlight.top}px`,
+                                    width: `${syncTeXHighlight.width}px`,
+                                    height: `${syncTeXHighlight.height}px`,
+                                }}
+                            />
+                        )}
 
                         {/*
                          * Search highlight overlay.

@@ -2,7 +2,7 @@
 
 import {useCallback, useEffect, useRef, useState,} from "react";
 
-import {PanelLeft,} from "lucide-react";
+import {FileText, PanelLeft, Terminal,} from "lucide-react";
 import {pdfjs} from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -17,6 +17,8 @@ import {ProjectToolbar} from "./project-toolbar";
 import {LatexEditor} from "@/components/projects/latex-editor";
 import {PdfPreview} from "@/components/projects/pdf-preview";
 import {Button} from "@/components/ui/button";
+import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
+import {CompileLogPanel} from "@/components/projects/compile-log-panel";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -30,6 +32,20 @@ export function ProjectEditor() {
     const [loading, setLoading] = useState(true);
 
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const [syncTeXSource, setSyncTeXSource] = useState<{
+        file: string;
+        line: number;
+        column: number;
+    } | null>(null);
+
+    const [syncTeXPdf, setSyncTeXPdf] = useState<{
+        page: number;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    } | null>(null);
+
     const [file, setFile] = useState<FileResponse>({
         path: "",
         content: "",
@@ -40,6 +56,8 @@ export function ProjectEditor() {
     const [saving, setSaving] = useState(false);
     const [pdfVersion, setPdfVersion] = useState(0);
     const [compiling, setCompiling] = useState(false);
+    const [compileLog, setCompileLog] = useState("");
+    const [compileSuccess, setCompileSuccess] = useState(false);
     const [resizingSidebar, setResizingSidebar] = useState(false);
     const editorContainerRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +129,59 @@ export function ProjectEditor() {
     const [sidebarWidth, setSidebarWidth] = useState(
         getInitialSidebarWidth
     );
+
+    const syncTeXSourceToPdf = async (
+        file: string,
+        line: number,
+        column: number = 1,
+    ) => {
+        try {
+            const response = await axios.post(
+                `/projects/${params.id}/synctex/source`,
+                {
+                    file,
+                    line,
+                    column,
+                },
+            );
+
+            setSyncTeXPdf(response.data);
+        } catch (error) {
+            console.error("SyncTeX source → PDF failed:", error);
+        }
+    };
+
+    const syncTeXPdfToSource = async (
+        page: number,
+        x: number,
+        y: number,
+    ) => {
+        try {
+            const response = await axios.post(
+                `/projects/${params.id}/synctex/pdf`,
+                {
+                    page,
+                    x,
+                    y,
+                },
+            );
+
+            const result = response.data;
+
+            await openFile(result.file);
+
+            setSyncTeXSource({
+                file: result.file,
+                line: result.line,
+                column: result.column > 0 ? result.column : 1,
+            });
+        } catch (error) {
+            console.error(
+                "SyncTeX PDF → source failed:",
+                error,
+            );
+        }
+    };
 
     const [sidebarCollapsed, setSidebarCollapsed] =
         useState(getInitialSidebarCollapsed);
@@ -251,6 +322,8 @@ export function ProjectEditor() {
 
         try {
             setCompiling(true);
+            setCompileSuccess(false);
+            setCompileLog("");
 
             const response = await axios.post<{
                 jobId: string;
@@ -282,10 +355,16 @@ export function ProjectEditor() {
 
                 const job = statusResponse.data;
 
+                if (job.log) {
+                    setCompileLog(job.log);
+                }
+
+
                 if (
                     job.status === "succeeded"
                 ) {
                     setPdfVersion(Date.now());
+                    setCompileSuccess(true);
 
                     toast.success(
                         "Project compiled successfully."
@@ -297,6 +376,8 @@ export function ProjectEditor() {
                 if (
                     job.status === "failed"
                 ) {
+                    setCompileLog(job.log);
+                    setCompileSuccess(false);
                     console.error(
                         "LaTeX compilation failed:",
                         job.log
@@ -314,6 +395,7 @@ export function ProjectEditor() {
                 );
             }
         } catch (error) {
+            setCompileSuccess(false);
             console.error(error);
 
             toast.error(
@@ -420,6 +502,8 @@ export function ProjectEditor() {
                                         onSave={saveFile}
                                         dirty={fileDirty}
                                         saving={saving}
+                                        onSyncTeX={syncTeXSourceToPdf}
+                                        syncTeXTarget={syncTeXSource}
                                         onChange={(value: string) => {
                                             setFile((currentFile) => ({
                                                 ...currentFile,
@@ -453,11 +537,55 @@ export function ProjectEditor() {
                     )}
                 </main>
 
-                <aside className="hidden w-[38%] min-w-105 border-l bg-muted/30 xl:block">
-                    <PdfPreview
-                        projectId={params.id}
-                        version={pdfVersion}
-                    />
+                <aside className="hidden w-[38%] min-w-105 border-l bg-muted/30 xl:flex xl:flex-col">
+                    <Tabs
+                        defaultValue="pdf"
+                        className="flex h-full min-h-0"
+                    >
+                        <TabsList
+                            variant="line"
+                            className="h-9 w-full shrink-0 rounded-none border-b px-2"
+                        >
+                            <TabsTrigger
+                                value="pdf"
+                                className="px-3 text-xs"
+                            >
+                                <FileText className="size-3.5" />
+                                PDF
+                            </TabsTrigger>
+
+                            <TabsTrigger
+                                value="logs"
+                                className="px-3 text-xs"
+                            >
+                                <Terminal className="size-3.5" />
+                                Logs
+                            </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent
+                            value="pdf"
+                            className="min-h-0 flex-1"
+                        >
+                            <PdfPreview
+                                projectId={params.id}
+                                version={pdfVersion}
+                                syncTeXTarget={syncTeXPdf}
+                                onSyncTeX={syncTeXPdfToSource}
+                            />
+                        </TabsContent>
+
+                        <TabsContent
+                            value="logs"
+                            className="min-h-0 flex-1"
+                        >
+                            <CompileLogPanel
+                                log={compileLog}
+                                compiling={compiling}
+                                success={compileSuccess}
+                            />
+                        </TabsContent>
+                    </Tabs>
                 </aside>
             </div>
         </div>

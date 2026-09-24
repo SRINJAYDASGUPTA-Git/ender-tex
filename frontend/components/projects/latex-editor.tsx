@@ -41,6 +41,15 @@ interface LatexEditorProps {
         content: string,
         local: boolean
     ) => void;
+    onSyncTeX?: (
+        file: string,
+        line: number,
+        column: number,
+    ) => void;
+    syncTeXTarget?: {
+        line: number;
+        column: number;
+    } | null;
     compiling?: boolean;
     dirty?: boolean;
     saving?: boolean;
@@ -64,8 +73,10 @@ export function LatexEditor({
                                 fileName,
                                 onCompile,
                                 onSave,
+                                onSyncTeX,
                                 projectId,
                                 onCollaborativeContentChange,
+                                syncTeXTarget,
                                 compiling = false,
                                 collaborative = false,
                                 dirty = false,
@@ -82,6 +93,8 @@ export function LatexEditor({
 
     const saveRef = useRef(onSave);
     const compileRef = useRef(onCompile);
+    const syncTeXRef = useRef(onSyncTeX);
+    const fileNameRef = useRef(fileName);
     const valueRef = useRef(value);
     const collaborativeChangeRef =
         useRef(onCollaborativeContentChange);
@@ -113,6 +126,14 @@ export function LatexEditor({
     }, [onCompile]);
 
     useEffect(() => {
+        syncTeXRef.current = onSyncTeX;
+    }, [onSyncTeX]);
+
+    useEffect(() => {
+        fileNameRef.current = fileName;
+    }, [fileName]);
+
+    useEffect(() => {
         compilingRef.current = compiling;
     }, [compiling]);
 
@@ -124,6 +145,46 @@ export function LatexEditor({
         collaborativeChangeRef.current =
             onCollaborativeContentChange;
     }, [onCollaborativeContentChange]);
+
+    /*
+     * Jump to a source location returned by SyncTeX.
+     *
+     * The parent loads the requested file first and then updates
+     * syncTeXTarget. Monaco receives the position here.
+     */
+    useEffect(() => {
+        const instance = editorRef.current;
+        const target = syncTeXTarget;
+
+        if (!instance || !target) {
+            return;
+        }
+
+        const model = instance.getModel();
+
+        if (!model) {
+            return;
+        }
+
+        const lineNumber = Math.min(
+            Math.max(target.line, 1),
+            model.getLineCount(),
+        );
+
+        const column = Math.min(
+            Math.max(target.column, 1),
+            model.getLineMaxColumn(lineNumber),
+        );
+
+        const position = {
+            lineNumber,
+            column,
+        };
+
+        instance.setPosition(position);
+        instance.revealPositionInCenter(position, 1);
+        instance.focus();
+    }, [syncTeXTarget, editorInstance]);
 
     /*
      * Connect to Yjs collaboration.
@@ -494,6 +555,34 @@ export function LatexEditor({
         }
 
         /*
+         * SyncTeX source → PDF.
+         *
+         * Ctrl-click on Linux/Windows and Cmd-click on macOS
+         * sends the clicked source position to the parent.
+         */
+        instance.onMouseDown((event) => {
+            const browserEvent = event.event;
+            const modifier =
+                browserEvent.ctrlKey ||
+                browserEvent.metaKey;
+
+            const position = event.target.position;
+
+            if (!modifier || !position) {
+                return;
+            }
+
+            browserEvent.preventDefault();
+            browserEvent.stopPropagation();
+
+            syncTeXRef.current?.(
+                fileNameRef.current,
+                position.lineNumber,
+                position.column,
+            );
+        });
+
+        /*
          * Keyboard shortcuts.
          */
         instance.onKeyDown((event) => {
@@ -526,7 +615,7 @@ export function LatexEditor({
              * Ctrl/Cmd + Enter
              */
             if (
-                browserEvent.key === "Enter"
+                browserEvent.key === "Enter" || browserEvent.key === "Return"
             ) {
                 browserEvent.preventDefault();
                 browserEvent.stopPropagation();
