@@ -196,6 +196,19 @@ func parseSyncTeXView(
 ) (*SyncTeXViewResult, error) {
 	result := &SyncTeXViewResult{}
 
+	/*
+	 * SyncTeX returns:
+	 *
+	 *   x/y -> synchronization point
+	 *   h/v -> origin of the enclosing box
+	 *   W/H -> size of the enclosing box
+	 *
+	 * Since W/H describe the box, use h/v for the returned
+	 * rectangle origin whenever they are available.
+	 */
+	hasBoxX := false
+	hasBoxY := false
+
 	for _, line := range strings.Split(
 		output,
 		"\n",
@@ -214,6 +227,7 @@ func parseSyncTeXView(
 		switch key {
 		case "Page":
 			parsed, err := strconv.Atoi(value)
+
 			if err != nil {
 				continue
 			}
@@ -221,10 +235,30 @@ func parseSyncTeXView(
 			result.Page = parsed
 
 		case "x":
-			result.X = parseFloat(value)
+			/*
+			 * Keep x as a fallback in case the SyncTeX
+			 * implementation does not emit h.
+			 */
+			if !hasBoxX {
+				result.X = parseFloat(value)
+			}
 
 		case "y":
+			/*
+			 * Keep y as a fallback in case the SyncTeX
+			 * implementation does not emit v.
+			 */
+			if !hasBoxY {
+				result.Y = parseFloat(value)
+			}
+
+		case "h":
+			result.X = parseFloat(value)
+			hasBoxX = true
+
+		case "v":
 			result.Y = parseFloat(value)
+			hasBoxY = true
 
 		case "W":
 			result.Width = parseFloat(value)

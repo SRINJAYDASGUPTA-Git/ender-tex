@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+} from "react";
+
 import Editor, {
     BeforeMount,
     Monaco,
@@ -47,6 +53,7 @@ interface LatexEditorProps {
         column: number,
     ) => void;
     syncTeXTarget?: {
+        file: string;
         line: number;
         column: number;
     } | null;
@@ -90,6 +97,16 @@ export function LatexEditor({
 
     const collaborationSessionRef =
         useRef<CollaborationSession | null>(null);
+
+    const pendingSyncTeXTargetRef =
+        useRef<{
+            file: string;
+            line: number;
+            column: number;
+        } | null>(null);
+
+    const collaborationReadyRef =
+        useRef(false);
 
     const saveRef = useRef(onSave);
     const compileRef = useRef(onCompile);
@@ -147,45 +164,96 @@ export function LatexEditor({
     }, [onCollaborativeContentChange]);
 
     /*
-     * Jump to a source location returned by SyncTeX.
-     *
-     * The parent loads the requested file first and then updates
-     * syncTeXTarget. Monaco receives the position here.
+ * Apply a pending SyncTeX target only when the requested
+ * file is the active Monaco model. In collaborative mode
+ * wait until the Yjs binding has been attached.
+ */
+    const applyPendingSyncTeXTarget =
+        useCallback(() => {
+            const target =
+                pendingSyncTeXTargetRef.current;
+
+            const instance =
+                editorRef.current;
+
+            if (
+                !instance ||
+                !target ||
+                target.file !== fileNameRef.current
+            ) {
+                return;
+            }
+
+            if (
+                collaborative &&
+                !collaborationReadyRef.current
+            ) {
+                return;
+            }
+
+            const model =
+                instance.getModel();
+
+            if (!model) {
+                return;
+            }
+
+            const lineNumber =
+                Math.min(
+                    Math.max(target.line, 1),
+                    model.getLineCount(),
+                );
+
+            const column =
+                Math.min(
+                    Math.max(target.column, 1),
+                    model.getLineMaxColumn(
+                        lineNumber
+                    ),
+                );
+
+            const position = {
+                lineNumber,
+                column,
+            };
+
+            instance.setPosition(
+                position
+            );
+
+            instance.revealPositionInCenter(
+                position,
+                1
+            );
+
+            instance.focus();
+
+            pendingSyncTeXTargetRef.current =
+                null;
+        }, [collaborative]);
+
+    /*
+     * Queue source navigation until the correct
+     * file/model is ready.
      */
     useEffect(() => {
-        const instance = editorRef.current;
-        const target = syncTeXTarget;
+        if (!syncTeXTarget) {
+            pendingSyncTeXTargetRef.current =
+                null;
 
-        if (!instance || !target) {
             return;
         }
 
-        const model = instance.getModel();
+        pendingSyncTeXTargetRef.current =
+            syncTeXTarget;
 
-        if (!model) {
-            return;
-        }
-
-        const lineNumber = Math.min(
-            Math.max(target.line, 1),
-            model.getLineCount(),
-        );
-
-        const column = Math.min(
-            Math.max(target.column, 1),
-            model.getLineMaxColumn(lineNumber),
-        );
-
-        const position = {
-            lineNumber,
-            column,
-        };
-
-        instance.setPosition(position);
-        instance.revealPositionInCenter(position, 1);
-        instance.focus();
-    }, [syncTeXTarget, editorInstance]);
-
+        applyPendingSyncTeXTarget();
+    }, [
+        syncTeXTarget,
+        fileName,
+        editorInstance,
+        applyPendingSyncTeXTarget,
+    ]);
     /*
      * Connect to Yjs collaboration.
      */
@@ -206,6 +274,9 @@ export function LatexEditor({
 
         const connect = async () => {
             try {
+                collaborationReadyRef.current =
+                    false;
+
                 setCollaborationStatus("connecting");
 
                 const session =
@@ -224,7 +295,8 @@ export function LatexEditor({
                         {
                             id: user.id,
                             name: user.name,
-                        }
+                        },
+                        ()=>{applyPendingSyncTeXTarget()}
                     );
 
                 if (disposed) {
@@ -401,6 +473,9 @@ export function LatexEditor({
         return () => {
             disposed = true;
 
+            collaborationReadyRef.current =
+                false;
+
             cleanup?.();
             cleanup = undefined;
 
@@ -418,6 +493,7 @@ export function LatexEditor({
         fileName,
         editorInstance,
         user,
+        applyPendingSyncTeXTarget
     ]);
 
     /*

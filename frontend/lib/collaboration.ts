@@ -79,7 +79,8 @@ export async function connectCollaborativeEditor(
     setStatus: (status: CollaborationStatus) => void,
     _initialContent: string,
     onContentChange: (content: string, local: boolean) => void,
-    currentUser: { id: string; name: string } // <-- Add currentUser parameter
+    currentUser: { id: string; name: string }, // <-- Add currentUser parameter
+    onReady?: () => void,
 ): Promise<CollaborationSession> {
 
     const [{ WebsocketProvider }, { MonacoBinding }] = await Promise.all([
@@ -157,6 +158,8 @@ export async function connectCollaborativeEditor(
             provider.awareness
         );
         onContentChange(text.toString(), false);
+
+        onReady?.()
     };
     provider.on("sync", handleSync);
     model.setEOL(0);

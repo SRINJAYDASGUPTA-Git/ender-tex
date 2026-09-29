@@ -63,13 +63,21 @@ export function ProjectEditor() {
 
     const openFile = useCallback(async (path: string) => {
         try {
+            /*
+             * The current SyncTeX target belongs to the old model.
+             * Clear it while switching files; PDF -> source installs
+             * the new target after the requested file has loaded.
+             */
+            setSyncTeXSource(null);
+
             setSelectedPath(path);
             setFileLoading(true);
             setFileDirty(false);
 
-            const response = await axios.get<FileResponse>(
-                `/projects/${params.id}/files/${path}`
-            );
+            const response =
+                await axios.get<FileResponse>(
+                    `/projects/${params.id}/files/${path}`
+                );
 
             setFile(response.data);
         } catch (error) {
@@ -168,12 +176,24 @@ export function ProjectEditor() {
 
             const result = response.data;
 
-            await openFile(result.file);
+            /*
+             * Only reload the file when SyncTeX points to a
+             * different source file.
+             *
+             * If we're already editing that file, keep the
+             * current Monaco/Yjs session alive.
+             */
+            if (result.file !== file.path) {
+                await openFile(result.file);
+            }
 
             setSyncTeXSource({
                 file: result.file,
                 line: result.line,
-                column: result.column > 0 ? result.column : 1,
+                column:
+                    result.column > 0
+                        ? result.column
+                        : 1,
             });
         } catch (error) {
             console.error(

@@ -195,63 +195,6 @@ function createTextRange(
     }
 }
 
-/*
- * Find every occurrence of a query inside a DOM element.
- *
- * Unlike customTextRenderer, this operates on the actual
- * PDF.js text layer after it has been positioned.
- */
-function findMatchesInElement(
-    element: HTMLElement,
-    query: string
-): Array<{
-    start: number;
-    end: number;
-}> {
-    const text =
-        element.textContent ?? "";
-
-    const lowerText =
-        text.toLowerCase();
-
-    const lowerQuery =
-        query.toLowerCase();
-
-    const results: Array<{
-        start: number;
-        end: number;
-    }> = [];
-
-    let offset = 0;
-
-    while (true) {
-        const index =
-            lowerText.indexOf(
-                lowerQuery,
-                offset
-            );
-
-        if (index === -1) {
-            break;
-        }
-
-        results.push({
-            start: index,
-            end:
-                index +
-                lowerQuery.length,
-        });
-
-        /*
-         * Move by one character so overlapping
-         * matches are also detected.
-         */
-        offset = index + 1;
-    }
-
-    return results;
-}
-
 export function PdfPreview({
                                projectId,
                                version,
@@ -312,13 +255,6 @@ export function PdfPreview({
         useRef<HTMLDivElement | null>(
             null
         );
-
-    /*
-     * Incremented whenever a PDF text layer
-     * finishes rendering.
-     */
-    const textLayerVersion =
-        useRef(0);
 
     const pdfUrl = useMemo(() => {
         return `/projects/${projectId}/pdf?v=${version}`;
@@ -390,7 +326,6 @@ export function PdfPreview({
      */
     const handleTextLayerSuccess =
         useCallback(() => {
-            textLayerVersion.current += 1;
 
             /*
              * Force the search effect to run.
@@ -495,23 +430,13 @@ export function PdfPreview({
             let globalIndex = 0;
 
             /*
-             * Iterate in DOM order.
+             * Search the complete text layer for each page.
              *
-             * React-PDF renders pages in document order,
-             * and text spans in reading order.
+             * PDF.js splits visible text across multiple spans.
+             * Searching span-by-span misses matches that cross
+             * those span boundaries.
              */
-            for (
-                const span of textSpans
-                ) {
-                const pageElement =
-                    span.closest<HTMLElement>(
-                        ".react-pdf__Page"
-                    );
-
-                if (!pageElement) {
-                    continue;
-                }
-
+            for (const pageElement of pageElements) {
                 const pageNumber =
                     Number(
                         pageElement.dataset
@@ -526,79 +451,101 @@ export function PdfPreview({
                     continue;
                 }
 
-                const occurrences =
-                    findMatchesInElement(
-                        span,
-                        query
+                const textLayer =
+                    pageElement.querySelector<HTMLElement>(
+                        ".react-pdf__Page__textContent"
                     );
 
-                if (
-                    occurrences.length ===
-                    0
-                ) {
+                if (!textLayer) {
                     continue;
                 }
 
-                for (
-                    const occurrence of occurrences
-                    ) {
-                    const range =
-                        createTextRange(
-                            span,
-                            occurrence.start,
-                            occurrence.end
+                const text =
+                    textLayer.textContent ?? "";
+
+                const lowerText =
+                    text.toLocaleLowerCase();
+
+                const lowerQuery =
+                    query.toLocaleLowerCase();
+
+                let searchOffset = 0;
+
+                while (true) {
+                    const matchStart =
+                        lowerText.indexOf(
+                            lowerQuery,
+                            searchOffset
                         );
 
-                    if (!range) {
-                        continue;
+                    if (matchStart === -1) {
+                        break;
                     }
 
-                    const rects =
-                        Array.from(
-                            range.getClientRects()
+                    const matchEnd =
+                        matchStart +
+                        lowerQuery.length;
+
+                    const range =
+                        createTextRange(
+                            textLayer,
+                            matchStart,
+                            matchEnd
                         );
 
-                    /*
-                     * A match can span multiple visual
-                     * rectangles, for example if the text
-                     * wraps.
-                     */
-                    for (
-                        const rect of rects
-                        ) {
-                        if (
-                            rect.width <= 0 ||
-                            rect.height <= 0
-                        ) {
-                            continue;
-                        }
+                    if (range) {
+                        for (
+                            const rect of Array.from(
+                            range.getClientRects()
+                        )
+                            ) {
+                            if (
+                                rect.width <= 0 ||
+                                rect.height <= 0
+                            ) {
+                                continue;
+                            }
 
-                        nextHighlights.push({
-                            index:
-                            globalIndex,
-                            page:
-                            pageNumber,
-                            left:
-                                rect.left -
-                                contentRect.left,
-                            top:
-                                rect.top -
-                                contentRect.top,
-                            width:
-                            rect.width,
-                            height:
-                            rect.height,
-                        });
+                            nextHighlights.push({
+                                index:
+                                globalIndex,
+
+                                page:
+                                pageNumber,
+
+                                left:
+                                    rect.left -
+                                    contentRect.left,
+
+                                top:
+                                    rect.top -
+                                    contentRect.top,
+
+                                width:
+                                rect.width,
+
+                                height:
+                                rect.height,
+                            });
+                        }
                     }
 
                     nextMatches.push({
                         index:
                         globalIndex,
+
                         page:
                         pageNumber,
                     });
 
                     globalIndex++;
+
+                    searchOffset =
+                        matchStart +
+                        Math.max(
+                            1,
+                            lowerQuery.length
+                        );
                 }
             }
 
