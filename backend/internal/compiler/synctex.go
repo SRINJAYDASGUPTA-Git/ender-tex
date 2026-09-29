@@ -112,7 +112,7 @@ func (c *Compiler) SyncTeXEdit(
 	pdfFile := pdfName(mainFile)
 
 	query := fmt.Sprintf(
-		"%d:%f:%f:/workdir/%s",
+		"%d:%.2f:%.2f:/workdir/%s",
 		page,
 		x,
 		y,
@@ -195,17 +195,6 @@ func parseSyncTeXView(
 	output string,
 ) (*SyncTeXViewResult, error) {
 	result := &SyncTeXViewResult{}
-
-	/*
-	 * SyncTeX returns:
-	 *
-	 *   x/y -> synchronization point
-	 *   h/v -> origin of the enclosing box
-	 *   W/H -> size of the enclosing box
-	 *
-	 * Since W/H describe the box, use h/v for the returned
-	 * rectangle origin whenever they are available.
-	 */
 	hasBoxX := false
 	hasBoxY := false
 
@@ -227,27 +216,17 @@ func parseSyncTeXView(
 		switch key {
 		case "Page":
 			parsed, err := strconv.Atoi(value)
-
 			if err != nil {
 				continue
 			}
-
 			result.Page = parsed
 
 		case "x":
-			/*
-			 * Keep x as a fallback in case the SyncTeX
-			 * implementation does not emit h.
-			 */
 			if !hasBoxX {
 				result.X = parseFloat(value)
 			}
 
 		case "y":
-			/*
-			 * Keep y as a fallback in case the SyncTeX
-			 * implementation does not emit v.
-			 */
 			if !hasBoxY {
 				result.Y = parseFloat(value)
 			}
@@ -283,7 +262,6 @@ func parseSyncTeXEdit(
 	projectDir string,
 ) (*SyncTeXEditResult, error) {
 	result := &SyncTeXEditResult{}
-
 	var inputFile string
 
 	for _, line := range strings.Split(

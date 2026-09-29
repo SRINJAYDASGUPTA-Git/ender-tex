@@ -15,7 +15,7 @@ import Editor, {
 import type { editor } from "monaco-editor";
 import * as Y from "yjs";
 import { registerLaTeXLanguage } from "monaco-latex";
-import { Play } from "lucide-react";
+import { Play, ArrowDown, ArrowUp, Loader2 } from "lucide-react";
 
 import {
     connectCollaborativeEditor,
@@ -61,6 +61,8 @@ interface LatexEditorProps {
     dirty?: boolean;
     saving?: boolean;
     readOnly?: boolean;
+    isSyncing?: boolean;
+    onTriggerSyncToPdf?: () => void;
 }
 
 interface ActiveUser {
@@ -89,6 +91,8 @@ export function LatexEditor({
                                 dirty = false,
                                 saving = false,
                                 readOnly = false,
+                                isSyncing = false,
+                                onTriggerSyncToPdf,
                             }: LatexEditorProps) {
     const { user } = useUser();
 
@@ -131,9 +135,6 @@ export function LatexEditor({
 
     const compilingRef = useRef(compiling);
 
-    /*
-     * Keep callback refs current.
-     */
     useEffect(() => {
         saveRef.current = onSave;
     }, [onSave]);
@@ -163,11 +164,9 @@ export function LatexEditor({
             onCollaborativeContentChange;
     }, [onCollaborativeContentChange]);
 
-    /*
- * Apply a pending SyncTeX target only when the requested
- * file is the active Monaco model. In collaborative mode
- * wait until the Yjs binding has been attached.
- */
+    const normalizePath = (p: string) =>
+        p.replace(/^\.\//, "").replace(/^\/+/, "");
+
     const applyPendingSyncTeXTarget =
         useCallback(() => {
             const target =
@@ -176,17 +175,13 @@ export function LatexEditor({
             const instance =
                 editorRef.current;
 
-            if (
-                !instance ||
-                !target ||
-                target.file !== fileNameRef.current
-            ) {
+            if (!instance || !target) {
                 return;
             }
 
             if (
-                collaborative &&
-                !collaborationReadyRef.current
+                normalizePath(target.file) !==
+                normalizePath(fileNameRef.current)
             ) {
                 return;
             }
@@ -230,12 +225,8 @@ export function LatexEditor({
 
             pendingSyncTeXTargetRef.current =
                 null;
-        }, [collaborative]);
+        }, []);
 
-    /*
-     * Queue source navigation until the correct
-     * file/model is ready.
-     */
     useEffect(() => {
         if (!syncTeXTarget) {
             pendingSyncTeXTargetRef.current =
@@ -254,9 +245,7 @@ export function LatexEditor({
         editorInstance,
         applyPendingSyncTeXTarget,
     ]);
-    /*
-     * Connect to Yjs collaboration.
-     */
+
     useEffect(() => {
         if (
             !collaborative ||
@@ -265,18 +254,17 @@ export function LatexEditor({
             !editorInstance ||
             !user
         ) {
+            collaborationReadyRef.current = true;
+            applyPendingSyncTeXTarget();
             return;
         }
 
         let disposed = false;
-
         let cleanup: (() => void) | undefined;
 
         const connect = async () => {
             try {
-                collaborationReadyRef.current =
-                    false;
-
+                collaborationReadyRef.current = false;
                 setCollaborationStatus("connecting");
 
                 const session =
@@ -296,7 +284,10 @@ export function LatexEditor({
                             id: user.id,
                             name: user.name,
                         },
-                        ()=>{applyPendingSyncTeXTarget()}
+                        () => {
+                            collaborationReadyRef.current = true;
+                            applyPendingSyncTeXTarget();
+                        }
                     );
 
                 if (disposed) {
@@ -304,26 +295,14 @@ export function LatexEditor({
                     return;
                 }
 
-                /*
-                 * Keep the session in a ref.
-                 *
-                 * We don't want the entire component to rerender
-                 * every time the session object changes.
-                 */
                 collaborationSessionRef.current = session;
+                collaborationReadyRef.current = true;
+                applyPendingSyncTeXTarget();
 
                 cleanup = () => {
                     session.destroy();
                 };
 
-                /*
-                 * Publish our initial Monaco selection.
-                 *
-                 * y-monaco normally updates awareness when the
-                 * selection changes. This additionally makes our
-                 * current position available immediately after
-                 * connecting.
-                 */
                 const model = editorInstance.getModel();
                 const selection = editorInstance.getSelection();
 
@@ -359,10 +338,6 @@ export function LatexEditor({
                     );
                 }
 
-                /*
-                 * Build the active collaborator list from
-                 * Yjs awareness.
-                 */
                 const updatePresence = () => {
                     const states =
                         Array.from(
@@ -408,10 +383,6 @@ export function LatexEditor({
                                 peer !== null
                         );
 
-                    /*
-                     * A single user may have multiple tabs open.
-                     * Show one avatar per user.
-                     */
                     const uniquePeers =
                         Array.from(
                             new Map(
@@ -432,10 +403,6 @@ export function LatexEditor({
 
                 updatePresence();
 
-                /*
-                 * Remove the awareness listener when this
-                 * particular session is destroyed.
-                 */
                 const originalCleanup = cleanup;
 
                 cleanup = () => {
@@ -461,6 +428,7 @@ export function LatexEditor({
                 );
 
                 if (!disposed) {
+                    collaborationReadyRef.current = true;
                     setCollaborationStatus(
                         "disconnected"
                     );
@@ -472,19 +440,15 @@ export function LatexEditor({
 
         return () => {
             disposed = true;
-
-            collaborationReadyRef.current =
-                false;
+            collaborationReadyRef.current = false;
 
             cleanup?.();
             cleanup = undefined;
 
             collaborationSessionRef.current = null;
-
             setCollaborationStatus(
                 "disconnected"
             );
-
             setActiveUsers([]);
         };
     }, [
@@ -496,9 +460,6 @@ export function LatexEditor({
         applyPendingSyncTeXTarget
     ]);
 
-    /*
-     * Jump the Monaco editor to another collaborator.
-     */
     const jumpToCollaborator = (
         clientId: number
     ) => {
@@ -545,10 +506,6 @@ export function LatexEditor({
             return;
         }
 
-        /*
-         * Make sure the relative positions belong
-         * to our collaborative text.
-         */
         if (
             anchorPosition.type !== session.text ||
             headPosition.type !== session.text
@@ -563,10 +520,6 @@ export function LatexEditor({
             return;
         }
 
-        /*
-         * Convert Yjs character offsets to Monaco
-         * positions.
-         */
         const anchorMonacoPosition =
             model.getPositionAt(
                 anchorPosition.index
@@ -577,9 +530,6 @@ export function LatexEditor({
                 headPosition.index
             );
 
-        /*
-         * Reproduce their selection.
-         */
         targetEditor.setSelection({
             startLineNumber:
             anchorMonacoPosition.lineNumber,
@@ -592,17 +542,11 @@ export function LatexEditor({
             headMonacoPosition.column,
         });
 
-        /*
-         * Move our viewport to their cursor.
-         */
         targetEditor.revealPositionInCenter(
             headMonacoPosition,
             1
         );
 
-        /*
-         * Give Monaco focus after jumping.
-         */
         targetEditor.focus();
     };
 
@@ -612,39 +556,28 @@ export function LatexEditor({
         configureLatex(monaco);
     };
 
-    /*
-     * Monaco mount.
-     */
     const handleMount: OnMount = (
         instance
     ) => {
         editorRef.current = instance;
         setEditorInstance(instance);
 
-        /*
-         * Use LF consistently across machines.
-         */
         const model = instance.getModel();
 
         if (model) {
             model.setEOL(0);
         }
 
-        /*
-         * SyncTeX source → PDF.
-         *
-         * Ctrl-click on Linux/Windows and Cmd-click on macOS
-         * sends the clicked source position to the parent.
-         */
         instance.onMouseDown((event) => {
             const browserEvent = event.event;
-            const modifier =
-                browserEvent.ctrlKey ||
-                browserEvent.metaKey;
+
+            if (browserEvent.detail !== 2) {
+                return;
+            }
 
             const position = event.target.position;
 
-            if (!modifier || !position) {
+            if (!position) {
                 return;
             }
 
@@ -658,12 +591,8 @@ export function LatexEditor({
             );
         });
 
-        /*
-         * Keyboard shortcuts.
-         */
         instance.onKeyDown((event) => {
             const { browserEvent } = event;
-
             const modifier =
                 browserEvent.ctrlKey ||
                 browserEvent.metaKey;
@@ -672,24 +601,16 @@ export function LatexEditor({
                 return;
             }
 
-            /*
-             * Ctrl/Cmd + S
-             */
             if (
                 browserEvent.key.toLowerCase() ===
                 "s"
             ) {
                 browserEvent.preventDefault();
                 browserEvent.stopPropagation();
-
                 saveRef.current();
-
                 return;
             }
 
-            /*
-             * Ctrl/Cmd + Enter
-             */
             if (
                 browserEvent.key === "Enter" || browserEvent.key === "Return"
             ) {
@@ -713,9 +634,6 @@ export function LatexEditor({
                 ? "Connecting..."
                 : "Offline";
 
-    /*
-     * Generate initials for collaborator avatars.
-     */
     const getInitials = (
         name: string
     ) => {
@@ -752,9 +670,6 @@ export function LatexEditor({
                         </span>
                     )}
 
-                    {/*
-                     * Collaborator avatars.
-                     */}
                     {activeUsers.length > 0 && (
                         <AvatarGroup className="ml-1">
                             {activeUsers.map(
@@ -821,6 +736,39 @@ export function LatexEditor({
                 </div>
 
                 <div className="flex items-center gap-1">
+                    {/* Overleaf-Style Sync Navigation Buttons */}
+                    <div className="flex items-center gap-1 border-x px-2 mx-1 text-zinc-400">
+                        {isSyncing ? (
+                            <Loader2 className="size-4 animate-spin text-indigo-400" />
+                        ) : (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const pos = editorRef.current?.getPosition();
+                                        if (pos) {
+                                            onSyncTeX?.(fileNameRef.current, pos.lineNumber, pos.column);
+                                        }
+                                    }}
+                                    title="Sync cursor position to PDF (Source → PDF)"
+                                    className="p-1.5 hover:bg-zinc-800 hover:text-zinc-100 rounded transition-colors"
+                                >
+                                    <ArrowDown className="size-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        onTriggerSyncToPdf?.();
+                                    }}
+                                    title="Sync preview selection to Editor (PDF → Source)"
+                                    className="p-1.5 hover:bg-zinc-800 hover:text-zinc-100 rounded transition-colors"
+                                >
+                                    <ArrowUp className="size-4" />
+                                </button>
+                            </>
+                        )}
+                    </div>
+
                     <Button
                         size="sm"
                         className="h-7 p-4"
@@ -829,9 +777,7 @@ export function LatexEditor({
                         variant="outline"
                     >
                         <BsFloppy className="mr-1.5 h-3.5 w-3.5" />
-
                         Save
-
                         <Kbd
                             data-icon="inline-end"
                             className="translate-x-0.5"
@@ -848,9 +794,7 @@ export function LatexEditor({
                         variant="outline"
                     >
                         <Play className="mr-1.5 h-3.5 w-3.5" />
-
                         {compiling ? "Compiling..." : "Compile"}
-
                         {!compiling && (
                             <Kbd
                                 data-icon="inline-end"
@@ -868,69 +812,42 @@ export function LatexEditor({
                     height="100%"
                     language="latex"
                     theme="vs-dark"
-
-                    /*
-                     * Yjs owns Monaco in collaborative mode.
-                     */
                     value={
                         collaborative
                             ? undefined
                             : value
                     }
-
                     beforeMount={handleBeforeMount}
                     onMount={handleMount}
-
-                    /*
-                     * React owns the editor in normal mode.
-                     *
-                     * Yjs/MonacoBinding owns it in collaborative
-                     * mode.
-                     */
                     onChange={(nextValue) => {
                         if (collaborative) {
                             return;
                         }
-
                         onChange(
                             nextValue ?? ""
                         );
                     }}
-
                     options={{
                         automaticLayout: true,
-
                         minimap: {
                             enabled: false,
                         },
-
                         fontSize: 14,
-
                         lineNumbers: "on",
-
                         wordWrap: "on",
-
                         padding: {
                             top: 12,
                             bottom: 12,
                         },
-
                         scrollBeyondLastLine: false,
-
                         tabSize: 4,
-
                         insertSpaces: true,
-
                         readOnly,
-
                         renderWhitespace:
                             "selection",
-
                         smoothScrolling: true,
-
                         cursorSmoothCaretAnimation:
                             "on",
-
                         contextmenu: true,
                     }}
                 />

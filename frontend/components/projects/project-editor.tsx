@@ -46,6 +46,9 @@ export function ProjectEditor() {
         height: number;
     } | null>(null);
 
+    const [isSyncingSource, setIsSyncingSource] = useState(false);
+    const [isSyncingReverse, setIsSyncingReverse] = useState(false);
+
     const [file, setFile] = useState<FileResponse>({
         path: "",
         content: "",
@@ -63,13 +66,7 @@ export function ProjectEditor() {
 
     const openFile = useCallback(async (path: string) => {
         try {
-            /*
-             * The current SyncTeX target belongs to the old model.
-             * Clear it while switching files; PDF -> source installs
-             * the new target after the requested file has loaded.
-             */
             setSyncTeXSource(null);
-
             setSelectedPath(path);
             setFileLoading(true);
             setFileDirty(false);
@@ -82,14 +79,11 @@ export function ProjectEditor() {
             setFile(response.data);
         } catch (error) {
             console.error(error);
-
             toast.error("Failed to open file.");
-
             setFile({
                 path: "",
                 content: "",
             });
-
             setFileDirty(false);
         } finally {
             setFileLoading(false);
@@ -144,6 +138,7 @@ export function ProjectEditor() {
         column: number = 1,
     ) => {
         try {
+            setIsSyncingSource(true);
             const response = await axios.post(
                 `/projects/${params.id}/synctex/source`,
                 {
@@ -156,6 +151,9 @@ export function ProjectEditor() {
             setSyncTeXPdf(response.data);
         } catch (error) {
             console.error("SyncTeX source → PDF failed:", error);
+            toast.error("Could not locate PDF region for this source line.");
+        } finally {
+            setIsSyncingSource(false);
         }
     };
 
@@ -165,6 +163,7 @@ export function ProjectEditor() {
         y: number,
     ) => {
         try {
+            setIsSyncingReverse(true);
             const response = await axios.post(
                 `/projects/${params.id}/synctex/pdf`,
                 {
@@ -176,13 +175,6 @@ export function ProjectEditor() {
 
             const result = response.data;
 
-            /*
-             * Only reload the file when SyncTeX points to a
-             * different source file.
-             *
-             * If we're already editing that file, keep the
-             * current Monaco/Yjs session alive.
-             */
             if (result.file !== file.path) {
                 await openFile(result.file);
             }
@@ -200,6 +192,9 @@ export function ProjectEditor() {
                 "SyncTeX PDF → source failed:",
                 error,
             );
+            toast.error("Could not locate source line for this PDF region.");
+        } finally {
+            setIsSyncingReverse(false);
         }
     };
 
@@ -214,10 +209,7 @@ export function ProjectEditor() {
                 );
 
                 const projectData = response.data;
-
                 setProject(projectData);
-
-                // Open main file automatically
                 await openFile(projectData.mainFile);
             } catch (error) {
                 console.error(error);
@@ -316,7 +308,6 @@ export function ProjectEditor() {
 
         try {
             setSaving(true);
-
             await axios.put(
                 `/projects/${params.id}/files/${file.path}`,
                 {
@@ -325,7 +316,6 @@ export function ProjectEditor() {
             );
 
             setFileDirty(false);
-
             toast.success("File saved.");
         } catch (error) {
             console.error(error);
@@ -379,34 +369,17 @@ export function ProjectEditor() {
                     setCompileLog(job.log);
                 }
 
-
-                if (
-                    job.status === "succeeded"
-                ) {
+                if (job.status === "succeeded") {
                     setPdfVersion(Date.now());
                     setCompileSuccess(true);
-
-                    toast.success(
-                        "Project compiled successfully."
-                    );
-
+                    toast.success("Project compiled successfully.");
                     break;
                 }
 
-                if (
-                    job.status === "failed"
-                ) {
+                if (job.status === "failed") {
                     setCompileLog(job.log);
                     setCompileSuccess(false);
-                    console.error(
-                        "LaTeX compilation failed:",
-                        job.log
-                    );
-
-                    toast.error(
-                        "Compilation failed. Check the compilation log."
-                    );
-
+                    toast.error("Compilation failed. Check the compilation log.");
                     break;
                 }
 
@@ -417,10 +390,7 @@ export function ProjectEditor() {
         } catch (error) {
             setCompileSuccess(false);
             console.error(error);
-
-            toast.error(
-                "Failed to start compilation."
-            );
+            toast.error("Failed to start compilation.");
         } finally {
             setCompiling(false);
         }
@@ -473,7 +443,6 @@ export function ProjectEditor() {
                             }
                         />
 
-                        {/* Resize handle */}
                         <div
                             className="absolute right-0 top-0 z-50 h-full w-1 cursor-col-resize transition-colors hover:bg-primary/50"
                             onMouseDown={(event) => {
@@ -522,6 +491,7 @@ export function ProjectEditor() {
                                         onSave={saveFile}
                                         dirty={fileDirty}
                                         saving={saving}
+                                        isSyncing={isSyncingSource}
                                         onSyncTeX={syncTeXSourceToPdf}
                                         syncTeXTarget={syncTeXSource}
                                         onChange={(value: string) => {
@@ -529,7 +499,6 @@ export function ProjectEditor() {
                                                 ...currentFile,
                                                 content: value,
                                             }));
-
                                             setFileDirty(true);
                                         }}
                                         onCollaborativeContentChange={(
@@ -540,14 +509,12 @@ export function ProjectEditor() {
                                                 ...currentFile,
                                                 content,
                                             }));
-
                                             if (local) {
                                                 setFileDirty(true);
                                             }
                                         }}
                                     />
                                 )}
-
                             </div>
                         </div>
                     ) : (
@@ -592,6 +559,7 @@ export function ProjectEditor() {
                                 version={pdfVersion}
                                 syncTeXTarget={syncTeXPdf}
                                 onSyncTeX={syncTeXPdfToSource}
+                                isSyncing={isSyncingReverse}
                             />
                         </TabsContent>
 

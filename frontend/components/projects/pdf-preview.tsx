@@ -22,6 +22,7 @@ import {
     RotateCcw,
     Search,
     X,
+    Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ interface PdfPreviewProps {
         width: number;
         height: number;
     } | null;
+    isSyncing?: boolean;
 }
 
 interface SearchMatch {
@@ -69,12 +71,6 @@ interface SearchHighlight {
     height: number;
 }
 
-/*
- * PDF.js text layers can contain multiple text nodes
- * inside a single span. This function walks all text
- * nodes and creates a DOM Range for an arbitrary
- * character range.
- */
 function createTextRange(
     element: HTMLElement,
     startOffset: number,
@@ -87,17 +83,11 @@ function createTextRange(
         );
 
     const textNodes: Text[] = [];
-
-    let currentNode =
-        walker.nextNode();
+    let currentNode = walker.nextNode();
 
     while (currentNode) {
-        textNodes.push(
-            currentNode as Text
-        );
-
-        currentNode =
-            walker.nextNode();
+        textNodes.push(currentNode as Text);
+        currentNode = walker.nextNode();
     }
 
     if (textNodes.length === 0) {
@@ -105,90 +95,52 @@ function createTextRange(
     }
 
     let currentOffset = 0;
-
     let startNode: Text | null = null;
     let startNodeOffset = 0;
-
     let endNode: Text | null = null;
     let endNodeOffset = 0;
 
     for (const node of textNodes) {
-        const length =
-            node.textContent?.length ?? 0;
+        const length = node.textContent?.length ?? 0;
+        const nodeStart = currentOffset;
+        const nodeEnd = currentOffset + length;
 
-        const nodeStart =
-            currentOffset;
-
-        const nodeEnd =
-            currentOffset + length;
-
-        /*
-         * Find the start text node.
-         */
         if (
             startNode === null &&
             startOffset >= nodeStart &&
             startOffset <= nodeEnd
         ) {
             startNode = node;
-
-            startNodeOffset =
-                Math.max(
-                    0,
-                    startOffset -
-                    nodeStart
-                );
+            startNodeOffset = Math.max(0, startOffset - nodeStart);
         }
 
-        /*
-         * Find the end text node.
-         */
         if (
             endOffset >= nodeStart &&
             endOffset <= nodeEnd
         ) {
             endNode = node;
-
-            endNodeOffset =
-                Math.max(
-                    0,
-                    endOffset -
-                    nodeStart
-                );
-
+            endNodeOffset = Math.max(0, endOffset - nodeStart);
             break;
         }
 
         currentOffset = nodeEnd;
     }
 
-    if (
-        !startNode ||
-        !endNode
-    ) {
+    if (!startNode || !endNode) {
         return null;
     }
 
-    const range =
-        document.createRange();
+    const range = document.createRange();
 
     try {
         range.setStart(
             startNode,
-            Math.min(
-                startNodeOffset,
-                startNode.length
-            )
+            Math.min(startNodeOffset, startNode.length)
         );
-
         range.setEnd(
             endNode,
-            Math.min(
-                endNodeOffset,
-                endNode.length
-            )
+            Math.min(endNodeOffset, endNode.length)
         );
-
         return range;
     } catch {
         return null;
@@ -200,69 +152,33 @@ export function PdfPreview({
                                version,
                                onSyncTeX,
                                syncTeXTarget = null,
+                               isSyncing = false,
                            }: PdfPreviewProps) {
-    const [numPages, setNumPages] =
-        useState(0);
+    const [numPages, setNumPages] = useState(0);
+    const [scale, setScale] = useState(1);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [search, setSearch] = useState("");
+    const [currentMatch, setCurrentMatch] = useState(0);
+    const [matches, setMatches] = useState<SearchMatch[]>([]);
+    const [highlights, setHighlights] = useState<SearchHighlight[]>([]);
+    const [syncTeXHighlight, setSyncTeXHighlight] = useState<{
+        page: number;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+    } | null>(null);
 
-    const [scale, setScale] =
-        useState(1);
+    const [pdfAvailable, setPdfAvailable] = useState(false);
+    const [checkingPdf, setCheckingPdf] = useState(true);
 
-    const [searchOpen, setSearchOpen] =
-        useState(false);
-
-    const [search, setSearch] =
-        useState("");
-
-    const [currentMatch, setCurrentMatch] =
-        useState(0);
-
-    const [matches, setMatches] =
-        useState<SearchMatch[]>([]);
-
-    const [highlights, setHighlights] =
-        useState<SearchHighlight[]>([]);
-
-    const [syncTeXHighlight, setSyncTeXHighlight] =
-        useState<{
-            page: number;
-            left: number;
-            top: number;
-            width: number;
-            height: number;
-        } | null>(null);
-
-    const [pdfAvailable, setPdfAvailable] =
-        useState(false);
-
-    const [checkingPdf, setCheckingPdf] =
-        useState(true);
-
-    /*
-     * The element that actually scrolls.
-     */
-    const pdfContainerRef =
-        useRef<HTMLDivElement | null>(
-            null
-        );
-
-    /*
-     * Wrapper around the entire PDF document.
-     *
-     * Highlight coordinates are relative to this
-     * element, so scrolling does not invalidate them.
-     */
-    const pdfContentRef =
-        useRef<HTMLDivElement | null>(
-            null
-        );
+    const pdfContainerRef = useRef<HTMLDivElement | null>(null);
+    const pdfContentRef = useRef<HTMLDivElement | null>(null);
 
     const pdfUrl = useMemo(() => {
         return `/projects/${projectId}/pdf?v=${version}`;
     }, [projectId, version]);
 
-    /*
-     * Reset search when the PDF changes.
-     */
     useEffect(() => {
         setSearch("");
         setCurrentMatch(0);
@@ -271,9 +187,6 @@ export function PdfPreview({
         setSyncTeXHighlight(null);
     }, [pdfUrl]);
 
-    /*
-     * Check whether a compiled PDF exists.
-     */
     useEffect(() => {
         let cancelled = false;
 
@@ -285,30 +198,17 @@ export function PdfPreview({
             setHighlights([]);
 
             try {
-                await axios.get(
-                    pdfUrl,
-                    {
-                        responseType:
-                            "blob",
-                    }
-                );
-
+                await axios.get(pdfUrl, { responseType: "blob" });
                 if (!cancelled) {
-                    setPdfAvailable(
-                        true
-                    );
+                    setPdfAvailable(true);
                 }
             } catch {
                 if (!cancelled) {
-                    setPdfAvailable(
-                        false
-                    );
+                    setPdfAvailable(false);
                 }
             } finally {
                 if (!cancelled) {
-                    setCheckingPdf(
-                        false
-                    );
+                    setCheckingPdf(false);
                 }
             }
         };
@@ -320,37 +220,14 @@ export function PdfPreview({
         };
     }, [pdfUrl]);
 
-    /*
-     * Tell React that a PDF.js text layer has
-     * finished rendering.
-     */
-    const handleTextLayerSuccess =
-        useCallback(() => {
+    const handleTextLayerSuccess = useCallback(() => {
+        setSearchRenderVersion((value) => value + 1);
+    }, []);
 
-            /*
-             * Force the search effect to run.
-             *
-             * We don't actually need the value itself;
-             * changing state is enough.
-             */
-            setSearchRenderVersion(
-                (value) => value + 1
-            );
-        }, []);
+    const [searchRenderVersion, setSearchRenderVersion] = useState(0);
 
-    const [
-        searchRenderVersion,
-        setSearchRenderVersion,
-    ] = useState(0);
-
-    /*
-     * Build exact highlight rectangles from the
-     * real PDF.js text layer.
-     */
     useEffect(() => {
-        const query =
-            search.trim();
-
+        const query = search.trim();
         if (!query) {
             setMatches([]);
             setHighlights([]);
@@ -358,194 +235,94 @@ export function PdfPreview({
             return;
         }
 
-        const container =
-            pdfContainerRef.current;
-
-        const content =
-            pdfContentRef.current;
+        const container = pdfContainerRef.current;
+        const content = pdfContentRef.current;
 
         if (!container || !content) {
             return;
         }
 
         let cancelled = false;
+        let retryTimer: number | undefined;
 
-        let retryTimer:
-            number | undefined;
-
-        const calculateHighlights = (
-            attempt: number
-        ) => {
+        const calculateHighlights = (attempt: number) => {
             if (cancelled) {
                 return;
             }
 
-            const pageElements =
-                Array.from(
-                    content.querySelectorAll<HTMLElement>(
-                        ".react-pdf__Page"
-                    )
-                );
+            const pageElements = Array.from(
+                content.querySelectorAll<HTMLElement>(".react-pdf__Page")
+            );
+            const textSpans = Array.from(
+                content.querySelectorAll<HTMLElement>(".react-pdf__Page__textContent span")
+            );
 
-            const textSpans =
-                Array.from(
-                    content.querySelectorAll<HTMLElement>(
-                        ".react-pdf__Page__textContent span"
-                    )
-                );
-
-            /*
-             * Text layer hasn't appeared yet.
-             */
-            if (
-                pageElements.length ===
-                0 ||
-                textSpans.length ===
-                0
-            ) {
+            if (pageElements.length === 0 || textSpans.length === 0) {
                 if (attempt < 30) {
-                    retryTimer =
-                        window.setTimeout(
-                            () =>
-                                calculateHighlights(
-                                    attempt +
-                                    1
-                                ),
-                            50
-                        );
+                    retryTimer = window.setTimeout(
+                        () => calculateHighlights(attempt + 1),
+                        50
+                    );
                 }
-
                 return;
             }
 
-            const contentRect =
-                content.getBoundingClientRect();
-
-            const nextMatches: SearchMatch[] =
-                [];
-
-            const nextHighlights: SearchHighlight[] =
-                [];
-
+            const contentRect = content.getBoundingClientRect();
+            const nextMatches: SearchMatch[] = [];
+            const nextHighlights: SearchHighlight[] = [];
             let globalIndex = 0;
 
-            /*
-             * Search the complete text layer for each page.
-             *
-             * PDF.js splits visible text across multiple spans.
-             * Searching span-by-span misses matches that cross
-             * those span boundaries.
-             */
             for (const pageElement of pageElements) {
-                const pageNumber =
-                    Number(
-                        pageElement.dataset
-                            .pageNumber
-                    );
-
-                if (
-                    !Number.isFinite(
-                        pageNumber
-                    )
-                ) {
+                const pageNumber = Number(pageElement.dataset.pageNumber);
+                if (!Number.isFinite(pageNumber)) {
                     continue;
                 }
 
-                const textLayer =
-                    pageElement.querySelector<HTMLElement>(
-                        ".react-pdf__Page__textContent"
-                    );
-
+                const textLayer = pageElement.querySelector<HTMLElement>(
+                    ".react-pdf__Page__textContent"
+                );
                 if (!textLayer) {
                     continue;
                 }
 
-                const text =
-                    textLayer.textContent ?? "";
-
-                const lowerText =
-                    text.toLocaleLowerCase();
-
-                const lowerQuery =
-                    query.toLocaleLowerCase();
-
+                const text = textLayer.textContent ?? "";
+                const lowerText = text.toLocaleLowerCase();
+                const lowerQuery = query.toLocaleLowerCase();
                 let searchOffset = 0;
 
                 while (true) {
-                    const matchStart =
-                        lowerText.indexOf(
-                            lowerQuery,
-                            searchOffset
-                        );
-
+                    const matchStart = lowerText.indexOf(lowerQuery, searchOffset);
                     if (matchStart === -1) {
                         break;
                     }
 
-                    const matchEnd =
-                        matchStart +
-                        lowerQuery.length;
-
-                    const range =
-                        createTextRange(
-                            textLayer,
-                            matchStart,
-                            matchEnd
-                        );
+                    const matchEnd = matchStart + lowerQuery.length;
+                    const range = createTextRange(textLayer, matchStart, matchEnd);
 
                     if (range) {
-                        for (
-                            const rect of Array.from(
-                            range.getClientRects()
-                        )
-                            ) {
-                            if (
-                                rect.width <= 0 ||
-                                rect.height <= 0
-                            ) {
+                        for (const rect of Array.from(range.getClientRects())) {
+                            if (rect.width <= 0 || rect.height <= 0) {
                                 continue;
                             }
 
                             nextHighlights.push({
-                                index:
-                                globalIndex,
-
-                                page:
-                                pageNumber,
-
-                                left:
-                                    rect.left -
-                                    contentRect.left,
-
-                                top:
-                                    rect.top -
-                                    contentRect.top,
-
-                                width:
-                                rect.width,
-
-                                height:
-                                rect.height,
+                                index: globalIndex,
+                                page: pageNumber,
+                                left: rect.left - contentRect.left,
+                                top: rect.top - contentRect.top,
+                                width: rect.width,
+                                height: rect.height,
                             });
                         }
                     }
 
                     nextMatches.push({
-                        index:
-                        globalIndex,
-
-                        page:
-                        pageNumber,
+                        index: globalIndex,
+                        page: pageNumber,
                     });
 
                     globalIndex++;
-
-                    searchOffset =
-                        matchStart +
-                        Math.max(
-                            1,
-                            lowerQuery.length
-                        );
+                    searchOffset = matchStart + Math.max(1, lowerQuery.length);
                 }
             }
 
@@ -553,189 +330,75 @@ export function PdfPreview({
                 return;
             }
 
-            setMatches(
-                nextMatches
-            );
-
-            setHighlights(
-                nextHighlights
-            );
-
-            setCurrentMatch(
-                (value) => {
-                    if (
-                        nextMatches.length ===
-                        0
-                    ) {
-                        return 0;
-                    }
-
-                    return Math.min(
-                        value,
-                        nextMatches.length -
-                        1
-                    );
+            setMatches(nextMatches);
+            setHighlights(nextHighlights);
+            setCurrentMatch((value) => {
+                if (nextMatches.length === 0) {
+                    return 0;
                 }
-            );
+                return Math.min(value, nextMatches.length - 1);
+            });
         };
 
-        /*
-         * Give React-PDF one frame to finish layout.
-         */
-        retryTimer =
-            window.setTimeout(
-                () =>
-                    calculateHighlights(
-                        0
-                    ),
-                0
-            );
+        retryTimer = window.setTimeout(() => calculateHighlights(0), 0);
 
         return () => {
             cancelled = true;
-
-            if (
-                retryTimer !==
-                undefined
-            ) {
-                window.clearTimeout(
-                    retryTimer
-                );
+            if (retryTimer !== undefined) {
+                window.clearTimeout(retryTimer);
             }
         };
-    }, [
-        search,
-        scale,
-        searchRenderVersion,
-    ]);
+    }, [search, scale, searchRenderVersion]);
 
-    /*
-     * Recalculate highlight positions when the
-     * PDF container changes size.
-     *
-     * This handles sidebar resizing and browser
-     * resizing as well.
-     */
     useEffect(() => {
-        const content =
-            pdfContentRef.current;
-
+        const content = pdfContentRef.current;
         if (!content) {
             return;
         }
 
-        const observer =
-            new ResizeObserver(() => {
-                if (
-                    search.trim()
-                ) {
-                    setSearchRenderVersion(
-                        (value) =>
-                            value + 1
-                    );
-                }
-            });
+        const observer = new ResizeObserver(() => {
+            if (search.trim()) {
+                setSearchRenderVersion((value) => value + 1);
+            }
+        });
 
         observer.observe(content);
-
         return () => {
             observer.disconnect();
         };
     }, [search]);
 
-    /*
-     * Scroll to the currently selected match.
-     */
     useEffect(() => {
-        if (
-            matches.length === 0 ||
-            highlights.length === 0
-        ) {
+        if (matches.length === 0 || highlights.length === 0) {
             return;
         }
 
-        const container =
-            pdfContainerRef.current;
-
+        const container = pdfContainerRef.current;
         if (!container) {
             return;
         }
 
-        /*
-         * Get the first visual rectangle belonging
-         * to the selected match.
-         */
-        const highlight =
-            highlights.find(
-                (item) =>
-                    item.index ===
-                    currentMatch
-            );
-
+        const highlight = highlights.find((item) => item.index === currentMatch);
         if (!highlight) {
             return;
         }
 
-        /*
-         * Coordinates are relative to the entire
-         * PDF content wrapper.
-         */
-        const targetTop =
-            highlight.top;
-
-        const targetLeft =
-            highlight.left;
-
-        const scrollTop =
-            targetTop -
-            container.clientHeight /
-            2 +
-            highlight.height / 2;
-
-        const scrollLeft =
-            targetLeft -
-            container.clientWidth /
-            2 +
-            highlight.width / 2;
+        const scrollTop = highlight.top - container.clientHeight / 2 + highlight.height / 2;
+        const scrollLeft = highlight.left - container.clientWidth / 2 + highlight.width / 2;
 
         container.scrollTo({
-            top: Math.max(
-                0,
-                scrollTop
-            ),
-            left: Math.max(
-                0,
-                scrollLeft
-            ),
+            top: Math.max(0, scrollTop),
+            left: Math.max(0, scrollLeft),
             behavior: "smooth",
         });
-    }, [
-        currentMatch,
-        matches.length,
-        highlights,
-    ]);
+    }, [currentMatch, matches.length, highlights]);
 
-    /*
-     * SyncTeX source → PDF.
-     *
-     * SyncTeX coordinates are in PDF points while React-PDF
-     * renders the page at `scale`, so convert them into the
-     * displayed page coordinates before drawing the overlay.
-     *
-     * The page may not exist in the DOM immediately after the
-     * target changes, so retry briefly until React-PDF has rendered it.
-     */
     useEffect(() => {
         const target = syncTeXTarget;
         const container = pdfContainerRef.current;
         const content = pdfContentRef.current;
 
-        if (
-            !target ||
-            !container ||
-            !content ||
-            !pdfAvailable
-        ) {
+        if (!target || !container || !content || !pdfAvailable) {
             setSyncTeXHighlight(null);
             return;
         }
@@ -748,70 +411,37 @@ export function PdfPreview({
                 return;
             }
 
-            const pageElement =
-                content.querySelector<HTMLElement>(
-                    `[data-synctex-page="${target.page}"]`,
-                );
+            const pageElement = content.querySelector<HTMLElement>(
+                `[data-synctex-page="${target.page}"]`
+            );
 
             if (!pageElement) {
                 if (attempt < 40) {
-                    retryTimer = window.setTimeout(
-                        () => applyTarget(attempt + 1),
-                        50,
-                    );
+                    retryTimer = window.setTimeout(() => applyTarget(attempt + 1), 50);
                 }
                 return;
             }
 
-            const pageRect =
-                pageElement.getBoundingClientRect();
+            const pageRect = pageElement.getBoundingClientRect();
+            const contentRect = content.getBoundingClientRect();
 
-            const contentRect =
-                content.getBoundingClientRect();
+            const width = Math.max(target.width * scale, 3);
+            // Increased height slightly for a thicker highlight box
+            const height = Math.max(target.height * scale, 3) + 4;
+            const left = pageRect.left - contentRect.left + target.x * scale;
+            // Shifted down slightly (+ 2px offset) to align perfectly with text lines
+            const top = pageRect.top - contentRect.top + target.y * scale + 2;
 
-            const width = Math.max(
-                target.width * scale,
-                3,
-            );
-
-            const height = Math.max(
-                target.height * scale,
-                3,
-            );
-
-            const left =
-                pageRect.left -
-                contentRect.left +
-                target.x * scale;
-
-            const top =
-                pageRect.top -
-                contentRect.top +
-                target.y * scale;
-
-            const highlight = {
+            setSyncTeXHighlight({
                 page: target.page,
                 left,
-                top,
+                top: top-15,
                 width,
                 height,
-            };
+            });
 
-            setSyncTeXHighlight(highlight);
-
-            /*
-             * Keep the source location around the center of
-             * the visible PDF viewport.
-             */
-            const scrollTop =
-                top -
-                container.clientHeight / 2 +
-                height / 2;
-
-            const scrollLeft =
-                left -
-                container.clientWidth / 2 +
-                width / 2;
+            const scrollTop = top - container.clientHeight / 2 + height / 2;
+            const scrollLeft = left - container.clientWidth / 2 + width / 2;
 
             container.scrollTo({
                 top: Math.max(0, scrollTop),
@@ -820,56 +450,20 @@ export function PdfPreview({
             });
         };
 
-        /*
-         * Let the current React-PDF render settle first.
-         */
-        retryTimer = window.setTimeout(
-            () => applyTarget(0),
-            0,
-        );
+        retryTimer = window.setTimeout(() => applyTarget(0), 0);
 
         return () => {
             cancelled = true;
-
             if (retryTimer !== undefined) {
                 window.clearTimeout(retryTimer);
             }
         };
-    }, [
-        syncTeXTarget,
-        scale,
-        pdfAvailable,
-        numPages,
-    ]);
+    }, [syncTeXTarget, scale, pdfAvailable, numPages]);
 
-    /*
-     * Zoom controls.
-     */
-    const zoomIn = () => {
-        setScale((value) =>
-            Math.min(
-                2.5,
-                value + 0.1
-            )
-        );
-    };
+    const zoomIn = () => setScale((v) => Math.min(2.5, v + 0.1));
+    const zoomOut = () => setScale((v) => Math.max(0.5, v - 0.1));
+    const resetZoom = () => setScale(1);
 
-    const zoomOut = () => {
-        setScale((value) =>
-            Math.max(
-                0.5,
-                value - 0.1
-            )
-        );
-    };
-
-    const resetZoom = () => {
-        setScale(1);
-    };
-
-    /*
-     * Close search.
-     */
     const closeSearch = () => {
         setSearchOpen(false);
         setSearch("");
@@ -878,69 +472,24 @@ export function PdfPreview({
         setHighlights([]);
     };
 
-    /*
-     * Next search result.
-     */
     const nextMatch = () => {
-        if (
-            matches.length === 0
-        ) {
-            return;
-        }
-
-        setCurrentMatch(
-            (value) =>
-                (value + 1) %
-                matches.length
-        );
+        if (matches.length === 0) return;
+        setCurrentMatch((v) => (v + 1) % matches.length);
     };
 
-    /*
-     * Previous search result.
-     */
     const previousMatch = () => {
-        if (
-            matches.length === 0
-        ) {
-            return;
-        }
-
-        setCurrentMatch(
-            (value) =>
-                (value -
-                    1 +
-                    matches.length) %
-                matches.length
-        );
+        if (matches.length === 0) return;
+        setCurrentMatch((v) => (v - 1 + matches.length) % matches.length);
     };
 
-    /*
-     * Keyboard controls:
-     *
-     * Enter       -> next
-     * Shift+Enter -> previous
-     * Escape      -> close
-     */
-    const handleSearchKeyDown = (
-        event: React.KeyboardEvent<HTMLInputElement>
-    ) => {
-        if (
-            event.key ===
-            "Escape"
-        ) {
+    const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Escape") {
             closeSearch();
             return;
         }
-
-        if (
-            event.key ===
-            "Enter"
-        ) {
+        if (event.key === "Enter") {
             event.preventDefault();
-
-            if (
-                event.shiftKey
-            ) {
+            if (event.shiftKey) {
                 previousMatch();
             } else {
                 nextMatch();
@@ -949,7 +498,17 @@ export function PdfPreview({
     };
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col relative">
+            {/* Loading Indicator Overlay */}
+            {isSyncing && (
+                <div className="absolute inset-0 z-50 bg-background/40 backdrop-blur-[1px] flex items-center justify-center">
+                    <div className="flex items-center gap-2 bg-popover text-popover-foreground px-3 py-1.5 rounded-md shadow-md border text-xs">
+                        <Loader2 className="size-4 animate-spin text-indigo-500" />
+                        <span>Syncing to source...</span>
+                    </div>
+                </div>
+            )}
+
             {/* Toolbar */}
             <div className="flex h-9 shrink-0 items-center border-b px-2">
                 <span className="px-2 text-xs font-medium text-muted-foreground">
@@ -961,24 +520,11 @@ export function PdfPreview({
                         <div className="flex items-center gap-1">
                             <div className="relative">
                                 <Search className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-
                                 <Input
                                     autoFocus
-                                    value={
-                                        search
-                                    }
-                                    onChange={(
-                                        event
-                                    ) =>
-                                        setSearch(
-                                            event
-                                                .target
-                                                .value
-                                        )
-                                    }
-                                    onKeyDown={
-                                        handleSearchKeyDown
-                                    }
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    onKeyDown={handleSearchKeyDown}
                                     placeholder="Search PDF..."
                                     className="h-7 w-48 pl-7 text-xs"
                                 />
@@ -986,8 +532,7 @@ export function PdfPreview({
 
                             {search.trim() && (
                                 <span className="min-w-12 text-center text-[10px] text-muted-foreground">
-                                    {matches.length >
-                                    0
+                                    {matches.length > 0
                                         ? `${currentMatch + 1} / ${matches.length}`
                                         : "0 / 0"}
                                 </span>
@@ -997,13 +542,8 @@ export function PdfPreview({
                                 variant="ghost"
                                 size="icon"
                                 className="size-7"
-                                onClick={
-                                    previousMatch
-                                }
-                                disabled={
-                                    matches.length ===
-                                    0
-                                }
+                                onClick={previousMatch}
+                                disabled={matches.length === 0}
                                 title="Previous match"
                             >
                                 <ChevronUp className="size-3.5" />
@@ -1013,13 +553,8 @@ export function PdfPreview({
                                 variant="ghost"
                                 size="icon"
                                 className="size-7"
-                                onClick={
-                                    nextMatch
-                                }
-                                disabled={
-                                    matches.length ===
-                                    0
-                                }
+                                onClick={nextMatch}
+                                disabled={matches.length === 0}
                                 title="Next match"
                             >
                                 <ChevronDown className="size-3.5" />
@@ -1029,9 +564,7 @@ export function PdfPreview({
                                 variant="ghost"
                                 size="icon"
                                 className="size-7"
-                                onClick={
-                                    closeSearch
-                                }
+                                onClick={closeSearch}
                                 title="Close search"
                             >
                                 <X className="size-3.5" />
@@ -1042,11 +575,7 @@ export function PdfPreview({
                             variant="ghost"
                             size="icon"
                             className="size-7"
-                            onClick={() =>
-                                setSearchOpen(
-                                    true
-                                )
-                            }
+                            onClick={() => setSearchOpen(true)}
                             title="Search PDF"
                         >
                             <Search className="size-3.5" />
@@ -1059,13 +588,8 @@ export function PdfPreview({
                         variant="ghost"
                         size="icon"
                         className="size-7"
-                        onClick={
-                            zoomOut
-                        }
-                        disabled={
-                            scale <=
-                            0.5
-                        }
+                        onClick={zoomOut}
+                        disabled={scale <= 0.5}
                         title="Zoom out"
                     >
                         <Minus className="size-3.5" />
@@ -1073,29 +597,19 @@ export function PdfPreview({
 
                     <button
                         type="button"
-                        onClick={
-                            resetZoom
-                        }
+                        onClick={resetZoom}
                         className="w-12 text-center text-xs text-muted-foreground hover:text-foreground"
                         title="Reset zoom"
                     >
-                        {Math.round(
-                            scale * 100
-                        )}
-                        %
+                        {Math.round(scale * 100)}%
                     </button>
 
                     <Button
                         variant="ghost"
                         size="icon"
                         className="size-7"
-                        onClick={
-                            zoomIn
-                        }
-                        disabled={
-                            scale >=
-                            2.5
-                        }
+                        onClick={zoomIn}
+                        disabled={scale >= 2.5}
                         title="Zoom in"
                     >
                         <Plus className="size-3.5" />
@@ -1105,9 +619,7 @@ export function PdfPreview({
                         variant="ghost"
                         size="icon"
                         className="size-7"
-                        onClick={
-                            resetZoom
-                        }
+                        onClick={resetZoom}
                         title="Reset zoom"
                     >
                         <RotateCcw className="size-3.5" />
@@ -1117,9 +629,7 @@ export function PdfPreview({
 
             {/* PDF viewport */}
             <div
-                ref={
-                    pdfContainerRef
-                }
+                ref={pdfContainerRef}
                 className="min-h-0 flex-1 overflow-auto bg-muted/40 p-6"
             >
                 {checkingPdf ? (
@@ -1128,61 +638,26 @@ export function PdfPreview({
                     </div>
                 ) : !pdfAvailable ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                        <p className="text-sm font-medium">
-                            No compiled PDF
-                        </p>
-
+                        <p className="text-sm font-medium">No compiled PDF</p>
                         <p className="text-xs text-muted-foreground">
-                            Compile the
-                            project to
-                            preview the
-                            PDF here.
+                            Compile the project to preview the PDF here.
                         </p>
                     </div>
                 ) : (
-                    /*
-                     * This wrapper establishes the coordinate
-                     * system for our highlight overlay.
-                     */
                     <div
-                        ref={
-                            pdfContentRef
-                        }
+                        ref={pdfContentRef}
                         className="relative w-fit min-w-full"
                     >
                         <Document
                             key={`/api/${pdfUrl}`}
                             file={`/api/${pdfUrl}`}
-                            onLoadSuccess={({
-                                                numPages,
-                                            }) => {
-                                setNumPages(
-                                    numPages
-                                );
-                            }}
-                            onLoadError={(
-                                error
-                            ) => {
-                                console.error(
-                                    "Failed to load PDF:",
-                                    error
-                                );
-
-                                setPdfAvailable(
-                                    false
-                                );
-
-                                setNumPages(
-                                    0
-                                );
-
-                                setMatches(
-                                    []
-                                );
-
-                                setHighlights(
-                                    []
-                                );
+                            onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                            onLoadError={(error) => {
+                                console.error("Failed to load PDF:", error);
+                                setPdfAvailable(false);
+                                setNumPages(0);
+                                setMatches([]);
+                                setHighlights([]);
                             }}
                             loading={
                                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -1197,62 +672,34 @@ export function PdfPreview({
                             className="flex flex-col items-center gap-6"
                         >
                             {Array.from(
-                                {
-                                    length: numPages,
-                                },
-                                (
-                                    _,
-                                    index
-                                ) => {
-                                    const pageNumber =
-                                        index +
-                                        1;
-
+                                { length: numPages },
+                                (_, index) => {
+                                    const pageNumber = index + 1;
                                     return (
                                         <div
                                             key={`page-${pageNumber}`}
-                                            data-synctex-page={
-                                                pageNumber
-                                            }
+                                            data-synctex-page={pageNumber}
                                             className={`bg-white shadow-md ${
-                                                onSyncTeX
-                                                    ? "cursor-crosshair"
-                                                    : ""
+                                                onSyncTeX ? "cursor-crosshair" : ""
                                             }`}
-                                            onClick={(
-                                                event,
-                                            ) => {
+                                            onDoubleClick={(event) => {
                                                 if (!onSyncTeX) {
                                                     return;
                                                 }
 
-                                                const rect =
-                                                    event.currentTarget.getBoundingClientRect();
+                                                const rect = event.currentTarget.getBoundingClientRect();
+                                                const clickX = event.clientX - rect.left;
+                                                const clickY = event.clientY - rect.top;
 
-                                                const x =
-                                                    (event.clientX -
-                                                        rect.left) /
-                                                    scale;
+                                                const x = clickX / scale;
+                                                const y = clickY / scale;
 
-                                                const y =
-                                                    (event.clientY -
-                                                        rect.top) /
-                                                    scale;
-
-                                                onSyncTeX(
-                                                    pageNumber,
-                                                    x,
-                                                    y,
-                                                );
+                                                onSyncTeX(pageNumber, x, y);
                                             }}
                                         >
                                             <Page
-                                                pageNumber={
-                                                    pageNumber
-                                                }
-                                                scale={
-                                                    scale
-                                                }
+                                                pageNumber={pageNumber}
+                                                scale={scale}
                                                 renderTextLayer
                                                 renderAnnotationLayer
                                                 onRenderTextLayerSuccess={
@@ -1265,9 +712,10 @@ export function PdfPreview({
                             )}
                         </Document>
 
+                        {/* Adjusted SyncTeX Highlight Box (slightly lower and thicker) */}
                         {syncTeXHighlight && (
                             <div
-                                className="pointer-events-none absolute z-40 rounded-sm bg-yellow-300/30 ring-2 ring-yellow-400 shadow-lg shadow-yellow-400/20"
+                                className="pointer-events-none absolute z-40 rounded-none bg-yellow-400/40 transition-all duration-200"
                                 style={{
                                     left: `${syncTeXHighlight.left}px`,
                                     top: `${syncTeXHighlight.top}px`,
@@ -1277,41 +725,31 @@ export function PdfPreview({
                             />
                         )}
 
-                        {/*
-                         * Search highlight overlay.
-                         *
-                         * This sits above the PDF canvas and
-                         * native PDF.js text layer, so it cannot
-                         * disturb the text-layer positioning.
-                         */}
-                        {highlights.length >
-                            0 && (
-                                <div className="pointer-events-none absolute inset-0 z-30">
-                                    {highlights.map(
-                                        (
-                                            highlight
-                                        ) => (
-                                            <div
-                                                key={`${highlight.index}-${highlight.left}-${highlight.top}`}
-                                                className={
-                                                    highlight.index ===
-                                                    currentMatch
-                                                        ? "pdf-search-highlight pdf-search-highlight-current"
-                                                        : "pdf-search-highlight"
-                                                }
-                                                style={{
-                                                    position:
-                                                        "absolute",
-                                                    left: `${highlight.left}px`,
-                                                    top: `${highlight.top}px`,
-                                                    width: `${highlight.width}px`,
-                                                    height: `${highlight.height}px`,
-                                                }}
-                                            />
-                                        )
-                                    )}
-                                </div>
-                            )}
+                        {/* Search Highlights */}
+                        {highlights.length > 0 && (
+                            <div className="pointer-events-none absolute inset-0 z-30">
+                                {highlights.map((highlight) => (
+                                    <div
+                                        key={`${highlight.index}-${highlight.left}-${highlight.top}`}
+                                        className={
+                                            highlight.index === currentMatch
+                                                ? "pdf-search-highlight pdf-search-highlight-current"
+                                                : "pdf-search-highlight"
+                                        }
+                                        style={{
+                                            position: "absolute",
+                                            left: `${highlight.left}px`,
+                                            top: `${highlight.top}px`,
+                                            width: `${highlight.width}px`,
+                                            height: `${highlight.height}px`,
+                                            backgroundColor: highlight.index === currentMatch
+                                                ? 'rgba(59, 130, 246, 0.25)'
+                                                : 'rgba(234, 179, 8, 0.15)',
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
