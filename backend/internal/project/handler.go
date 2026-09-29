@@ -1,3 +1,4 @@
+// 
 package project
 
 import (
@@ -6,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"mime"
 	"path/filepath"
 	"strings"
 
@@ -1536,6 +1538,35 @@ func (h *Handler) readFile(
 		return
 	}
 
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	// Check if the file is an image asset
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg":
+		contentType := mime.TypeByExtension(ext)
+		if contentType == "" {
+			// Fallback MIME types if system registry doesn't catch it
+			switch ext {
+			case ".png":
+				contentType = "image/png"
+			case ".jpg", ".jpeg":
+				contentType = "image/jpeg"
+			case ".gif":
+				contentType = "image/gif"
+			case ".webp":
+				contentType = "image/webp"
+			case ".svg":
+				contentType = "image/svg+xml"
+			}
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(content)
+		return
+	}
+
+	// Default response for text/LaTeX/BibTeX files
 	writeJSON(w, http.StatusOK, map[string]any{
 		"path":    filePath,
 		"content": string(content),

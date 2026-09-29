@@ -271,7 +271,6 @@ func isGeneratedArtifact(path string) bool {
 
 func (s *Storage) ReadFile(projectID, filePath string) ([]byte, error) {
 	path, err := s.safeFilePath(projectID, filePath)
-	fmt.Println("path", path)
 	if err != nil {
 		return nil, err
 	}

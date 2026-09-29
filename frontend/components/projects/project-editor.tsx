@@ -1,8 +1,8 @@
 "use client";
 
-import {useCallback, useEffect, useRef, useState,} from "react";
+import {useCallback, useEffect, useRef, useState, useMemo} from "react";
 
-import {FileText, PanelLeft, Terminal,} from "lucide-react";
+import {FileText, PanelLeft, Terminal, Image as ImageIcon, FileWarning} from "lucide-react";
 import {pdfjs} from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -64,12 +64,38 @@ export function ProjectEditor() {
     const [resizingSidebar, setResizingSidebar] = useState(false);
     const editorContainerRef = useRef<HTMLDivElement>(null);
 
+    // Helper to determine file extension type
+    const fileExtension = useMemo(() => {
+        if (!selectedPath) return "";
+        return selectedPath.split(".").pop()?.toLowerCase() || "";
+    }, [selectedPath]);
+
+    const isPdfFile = fileExtension === "pdf";
+    const isImageFile = ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(fileExtension);
+
+    // Document Statistics Calculation
+    const documentStats = useMemo(() => {
+        const text = file.content || "";
+        const chars = text.length;
+        const lines = text ? text.split("\n").length : 0;
+        const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+        return { words, chars, lines };
+    }, [file.content]);
+
     const openFile = useCallback(async (path: string) => {
         try {
             setSyncTeXSource(null);
             setSelectedPath(path);
             setFileLoading(true);
             setFileDirty(false);
+
+            const ext = path.split(".").pop()?.toLowerCase() || "";
+            if (ext === "pdf" || ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) {
+                // Don't fetch text content for binary files like PDFs or images into editor state
+                setFile({ path, content: "" });
+                setFileLoading(false);
+                return;
+            }
 
             const response =
                 await axios.get<FileResponse>(
@@ -302,7 +328,7 @@ export function ProjectEditor() {
     }, [resizingSidebar]);
 
     const saveFile = async () => {
-        if (!file.path || !fileDirty || saving) {
+        if (!file.path || !fileDirty || saving || isPdfFile || isImageFile) {
             return;
         }
 
@@ -475,45 +501,88 @@ export function ProjectEditor() {
                                 {selectedPath}
                             </div>
 
-                            <div className="min-h-0 flex-1 overflow-auto p-4">
+                            <div className="min-h-0 flex-1 overflow-auto p-4 flex flex-col">
                                 {fileLoading ? (
                                     <div className="text-sm text-muted-foreground">
                                         Loading file...
                                     </div>
+                                ) : isPdfFile ? (
+                                    /* Prevent PDF text editing */
+                                    <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                                        <FileWarning className="size-10 text-amber-500" />
+                                        <div>
+                                            <p className="text-sm font-medium">PDF Document Selected</p>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Compiled PDF files are displayed in the live PDF Preview panel on the right.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : isImageFile ? (
+                                    /* Display images natively instead of raw text */
+                                    <div className="flex h-full flex-col items-center justify-center gap-4 bg-muted/20 p-6 rounded-md">
+                                        <div className="relative max-h-[70vh] max-w-full overflow-hidden rounded border bg-background shadow-sm">
+                                            <img
+                                                src={`/api/projects/${params.id}/files/${selectedPath}`}
+                                                alt={selectedPath}
+                                                className="h-auto max-h-[70vh] w-auto object-contain"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <ImageIcon className="size-4" />
+                                            <span>Asset Preview: {selectedPath}</span>
+                                        </div>
+                                    </div>
                                 ) : (
-                                    <LatexEditor
-                                        projectId={params.id}
-                                        collaborative
-                                        value={file.content}
-                                        fileName={file.path}
-                                        compiling={compiling}
-                                        onCompile={compileProject}
-                                        onSave={saveFile}
-                                        dirty={fileDirty}
-                                        saving={saving}
-                                        isSyncing={isSyncingSource}
-                                        onSyncTeX={syncTeXSourceToPdf}
-                                        syncTeXTarget={syncTeXSource}
-                                        onChange={(value: string) => {
-                                            setFile((currentFile) => ({
-                                                ...currentFile,
-                                                content: value,
-                                            }));
-                                            setFileDirty(true);
-                                        }}
-                                        onCollaborativeContentChange={(
-                                            content,
-                                            local,
-                                        ) => {
-                                            setFile((currentFile) => ({
-                                                ...currentFile,
-                                                content,
-                                            }));
-                                            if (local) {
-                                                setFileDirty(true);
-                                            }
-                                        }}
-                                    />
+                                    /* Normal Text / LaTeX Editor */
+                                    <div className="flex h-full flex-col min-h-0">
+                                        <div className="flex-1 min-h-0">
+                                            <LatexEditor
+                                                projectId={params.id}
+                                                collaborative
+                                                value={file.content}
+                                                fileName={file.path}
+                                                compiling={compiling}
+                                                onCompile={compileProject}
+                                                onSave={saveFile}
+                                                dirty={fileDirty}
+                                                saving={saving}
+                                                isSyncing={isSyncingSource}
+                                                onSyncTeX={syncTeXSourceToPdf}
+                                                syncTeXTarget={syncTeXSource}
+                                                onChange={(value: string) => {
+                                                    setFile((currentFile) => ({
+                                                        ...currentFile,
+                                                        content: value,
+                                                    }));
+                                                    setFileDirty(true);
+                                                }}
+                                                onCollaborativeContentChange={(
+                                                    content,
+                                                    local,
+                                                ) => {
+                                                    setFile((currentFile) => ({
+                                                        ...currentFile,
+                                                        content,
+                                                    }));
+                                                    if (local) {
+                                                        setFileDirty(true);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+
+                                        {/* Document Statistics Status Bar */}
+                                        <div className="h-7 shrink-0 border-t bg-muted/40 px-3 flex items-center justify-between text-[11px] text-muted-foreground select-none">
+                                            <div className="flex items-center gap-4">
+                                                <span>Words: <strong className="text-foreground">{documentStats.words}</strong></span>
+                                                <span>Characters: <strong className="text-foreground">{documentStats.chars}</strong></span>
+                                                <span>Lines: <strong className="text-foreground">{documentStats.lines}</strong></span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="uppercase text-[10px] tracking-wider font-semibold">{fileExtension}</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </div>
